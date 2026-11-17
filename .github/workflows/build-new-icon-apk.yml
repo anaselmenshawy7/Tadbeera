@@ -19,7 +19,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
@@ -33,7 +32,7 @@ jobs:
           python -m pip install Pillow
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm install --legacy-peer-deps
 
       - name: Validate source icon exists
         run: |
@@ -45,7 +44,6 @@ jobs:
           python - <<'PY'
           from PIL import Image
           from pathlib import Path
-          import json
 
           source = Path("public/assets/aistudio/a_clean_glossy_modern_app_icon_design_in_a_soft_2efdb44d.png")
           image = Image.open(source).convert("RGBA")
@@ -77,7 +75,7 @@ jobs:
           values = res / "values"
           values.mkdir(parents=True, exist_ok=True)
           (values / "ic_launcher_background.xml").write_text(
-              '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#F7A9C2</color>\n</resources>\n'
+              '<?xml version="1.0" encoding="utf-8"?>\\n<resources>\\n    <color name="ic_launcher_background">#F7A9C2</color>\\n</resources>\\n'
           )
 
           public = Path("public")
