@@ -25,6 +25,7 @@ export interface Recipe {
   isQuick: boolean;
   usesLeftovers: boolean;
   tags: string[];
+  cuisine?: 'egyptian' | 'arab' | 'international';
   imageUrl: string;
   svgFallbackIcon: 'egg' | 'koshary' | 'pasta' | 'soup' | 'meat' | 'salad' | 'potatoes' | 'foul';
 }
@@ -810,6 +811,326 @@ EXTRA_EGYPTIAN_RECIPES.push(
   { id:'rec_bessara_encyclopedia', name:'البصارة المصرية بالتقلية المقرمشة', mealType:'dinner', prepTimeMinutes:55, baseServings:4, ingredients:[{name:'فول مدشوش',quantity:'2 كوب',baseAmount:2,unit:'كوب'},{name:'كرات',quantity:'حزمة',baseAmount:1,unit:'حزمة'},{name:'كزبرة خضراء وشبت',quantity:'حزمة مشكلة',baseAmount:1,unit:'حزمة'},{name:'بصل',quantity:'بصلتان',baseAmount:2,unit:'حبة'},{name:'ثوم',quantity:'4 فصوص',baseAmount:4,unit:'فص'},{name:'نعناع جاف',quantity:'ملعقة صغيرة',baseAmount:1,unit:'ملعقة صغيرة'}], steps:['اسلق الفول المدشوش مع الكرات والخضرة والبصل والثوم حتى يذوب وينضج.','اضرب الخليط بالخلاط حتى يصبح ناعماً وسميكاً.','أعده إلى الحلة وأضف النعناع الجاف والكمون والملح والملوخية الجافة الاختيارية.','قلّب على نار هادئة حتى يتماسك القوام، ثم اتركه يبرد قليلاً.','قدّم البصارة مزينة بالبصل المحمر المقرمش.'], budgetCategory:'اقتصادي جداً',estimatedCostEgp:28,isVeryBudget:true,isQuick:false,usesLeftovers:false,tags:['عشاء','بصارة','فول','مصري','اقتصادي'],imageUrl:'https://www.vetogate.com/Upload/libfiles/453/7/811.jpg',svgFallbackIcon:'soup' },
   { id:'rec_moussaka_meat_encyclopedia', name:'صينية المسقعة المصرية باللحمة المفرومة', mealType:'lunch', prepTimeMinutes:55, baseServings:4, ingredients:[{name:'باذنجان رومي',quantity:'2 حبة كبيرة',baseAmount:2,unit:'حبة'},{name:'فلفل أخضر',quantity:'حبتان',baseAmount:2,unit:'حبة'},{name:'لحم مفروم',quantity:'300 جرام',baseAmount:300,unit:'جرام'},{name:'عصير طماطم',quantity:'2 كوب',baseAmount:2,unit:'كوب'},{name:'ثوم',quantity:'4 فصوص',baseAmount:4,unit:'فص'},{name:'خل',quantity:'ملعقتان كبيرتان',baseAmount:2,unit:'ملعقة كبيرة'}], steps:['رشّ الباذنجان بالملح واتركه دقائق ثم جففه وحمّره أو اشوه حتى يكتسب لوناً.','حمّر الفلفل وجهّز اللحم المفروم المعصج.','شوّح الثوم وأضف الخل ثم عصير الطماطم والكمون واترك الصلصة تتسبك.','رصّ طبقة باذنجان وفلفل ثم اللحم ثم طبقة أخرى من الباذنجان.','اسكب الصلصة وأدخل الصينية الفرن نحو 25 دقيقة حتى تتشرب وتتحمر.'], budgetCategory:'وجبة رئيسية',estimatedCostEgp:90,isVeryBudget:false,isQuick:false,usesLeftovers:false,tags:['غداء','مسقعة','باذنجان','لحمة','مصري'],imageUrl:'https://cdn.al-ain.com/lg/images/2022/3/11/135-104725-moussaka-minced-meat-recipe-way-2.png',svgFallbackIcon:'potatoes' },
   { id:'rec_om_ali_encyclopedia', name:'طاجن أم علي المصري بالمكسرات والقشطة', mealType:'dinner', prepTimeMinutes:35, baseServings:6, ingredients:[{name:'جلاش أو رقاق أو ميلفوي مخبوز',quantity:'250 جرام',baseAmount:250,unit:'جرام'},{name:'لبن كامل الدسم',quantity:'4 أكواب',baseAmount:4,unit:'كوب'},{name:'سكر',quantity:'نصف كوب',baseAmount:0.5,unit:'كوب'},{name:'مكسرات وزبيب وجوز هند',quantity:'كوب مشكلة',baseAmount:1,unit:'كوب'},{name:'قشطة',quantity:'نصف كوب',baseAmount:0.5,unit:'كوب'}], steps:['كسّر رقائق الجلاش أو الميلفوي المخبوز في طاجن فرن.','أضف المكسرات والزبيب وجوز الهند وقلّبها مع الرقائق.','سخّن اللبن مع السكر والفانيليا واسكب الخليط حتى تتشرب الرقائق.','وزّع القشطة على الوجه وأدخل الطاجن تحت الشواية حتى يصبح ذهبياً.','قدّم أم علي دافئة بعد أن تهدأ قليلاً.'], budgetCategory:'حلويات',estimatedCostEgp:85,isVeryBudget:false,isQuick:true,usesLeftovers:false,tags:['حلويات','أم علي','مصري','طواجن'],imageUrl:'https://scoopempire.com/wp-content/uploads/2025/12/WhatsApp-Image-2025-12-31-at-4.06.18-PM.jpeg',svgFallbackIcon:'pasta' }
+);
+
+/* Expanded Egyptian & Arab seafood, shrimp, and regional staple recipes. */
+EXTRA_EGYPTIAN_RECIPES.push(
+  {
+    id: 'rec_shrimp_alexandrian',
+    name: 'جمبري إسكندراني بالثوم والفلفل والليمون',
+    mealType: 'lunch',
+    prepTimeMinutes: 25,
+    baseServings: 4,
+    cuisine: 'egyptian',
+    ingredients: [
+      { name: 'جمبري مقشر ومنظف', quantity: '500 جرام', baseAmount: 500, unit: 'جرام' },
+      { name: 'ثوم مفروم', quantity: '6 فصوص', baseAmount: 6, unit: 'فص' },
+      { name: 'فلفل رومي وألوان', quantity: '2 حبة', baseAmount: 2, unit: 'حبة' },
+      { name: 'عصير ليمون', quantity: '2 حبة', baseAmount: 2, unit: 'حبة' },
+      { name: 'كمون وكزبرة ناشفة', quantity: '2 ملعقة صغيرة', baseAmount: 2, unit: 'ملعقة صغيرة' },
+      { name: 'زيت', quantity: '3 ملاعق كبيرة', baseAmount: 3, unit: 'ملعقة كبيرة' }
+    ],
+    steps: [
+      'اغسلي الجمبري جيداً بالماء والملح والليمون وصفيه تماماً.',
+      'سخني الزيت في طاسة واسعة على نار عالية ثم أضيفي نصف كمية الثوم وقلبي سريعاً.',
+      'أضيفي الجمبري وتبليه بالكمون والكزبرة والملح والفلفل والشطة وقلبيه 3 دقائق حتى يتغير لونه للبرتقالي.',
+      'أضيفي الفلفل الرومي والحار وباقي الثوم وعصير الليمون وقلبي دقيقتين فقط حتى لا يجف الجمبري، ثم قدميه ساخناً مع العيش البلدي أو الأرز الصيادية.'
+    ],
+    budgetCategory: 'مأكولات بحرية',
+    estimatedCostEgp: 220,
+    isVeryBudget: false,
+    isQuick: true,
+    usesLeftovers: false,
+    tags: ['غداء', 'جمبري', 'سمك', 'إسكندراني', 'مصري', 'بحريات'],
+    imageUrl: '',
+    svgFallbackIcon: 'meat'
+  },
+  {
+    id: 'rec_shrimp_casserole_egyptian',
+    name: 'طاجن جمبري بالفرن بالصلصة والبطاطس',
+    mealType: 'lunch',
+    prepTimeMinutes: 40,
+    baseServings: 4,
+    cuisine: 'egyptian',
+    ingredients: [
+      { name: 'جمبري منظف', quantity: '500 جرام', baseAmount: 500, unit: 'جرام' },
+      { name: 'طماطم معصورة', quantity: '3 حبات', baseAmount: 3, unit: 'حبة' },
+      { name: 'بصل شرائح', quantity: '2 حبة', baseAmount: 2, unit: 'حبة' },
+      { name: 'بطاطس حلقات رفيعة', quantity: '2 حبة', baseAmount: 2, unit: 'حبة' },
+      { name: 'فلفل رومي وثوم', quantity: '2 فلفل و4 فصوص ثوم', baseAmount: 2, unit: 'حبة' },
+      { name: 'كرفس أو شبت وكمون', quantity: 'نصف حزمة', baseAmount: 0.5, unit: 'حزمة' }
+    ],
+    steps: [
+      'شوحي البصل والثوم والفلفل في قليل من الزيت ثم أضيفي عصير الطماطم والكمون والملح واتركيها تتسبك 10 دقائق.',
+      'رصي حلقات البطاطس الرفيعة في طاجن فخار واسكبي فوقها نصف الصلصة وادخليها فرن ساخن 15 دقيقة حتى تقترب من النضج.',
+      'أضيفي الجمبري المتبل بالليمون والثوم والشبت فوق البطاطس ومعه باقي الصلصة.',
+      'أعيدي الطاجن للفرن 12 إلى 15 دقيقة حتى ينضج الجمبري ويتحمر الوجه قليلاً وقدميه مع الأرز الأبيض.'
+    ],
+    budgetCategory: 'مأكولات بحرية',
+    estimatedCostEgp: 235,
+    isVeryBudget: false,
+    isQuick: false,
+    usesLeftovers: false,
+    tags: ['غداء', 'جمبري', 'طاجن', 'فرن', 'مصري', 'بحريات'],
+    imageUrl: '',
+    svgFallbackIcon: 'potatoes'
+  },
+  {
+    id: 'rec_molokhia_shrimp',
+    name: 'ملوخية بالجمبري على الطريقة البورسعيدية',
+    mealType: 'lunch',
+    prepTimeMinutes: 30,
+    baseServings: 4,
+    cuisine: 'egyptian',
+    ingredients: [
+      { name: 'جمبري مقشر', quantity: '400 جرام', baseAmount: 400, unit: 'جرام' },
+      { name: 'ملوخية خضراء مفرومة', quantity: '500 جرام', baseAmount: 500, unit: 'جرام' },
+      { name: 'مرقة قشر الجمبري أو سمك', quantity: '3.5 كوب', baseAmount: 3.5, unit: 'كوب' },
+      { name: 'ثوم مفروم', quantity: '6 فصوص', baseAmount: 6, unit: 'فص' },
+      { name: 'كزبرة ناشفة وسمنة أو زيت', quantity: '1 ملعقة كبيرة', baseAmount: 1, unit: 'ملعقة كبيرة' }
+    ],
+    steps: [
+      'اغلي قشر ورؤوس الجمبري مع بصلة وورق لورا وكمون 15 دقيقة ثم صفيها للحصول على مرقة غنية.',
+      'سخني المرقة وأضيفي الجمبري لمدة 3 دقائق ثم أضيفي الملوخية المفرومة وقلبي على نار هادئة دون غليان قوي.',
+      'في طاسة، حمري الثوم المفروم والكزبرة الناشفة في السمنة أو الزيت حتى يصبح لونها ذهبياً.',
+      'اسكبي التقلية على الملوخية بالجمبري وقدميها ساخنة مع الأرز الأبيض والليمون.'
+    ],
+    budgetCategory: 'مأكولات بحرية',
+    estimatedCostEgp: 210,
+    isVeryBudget: false,
+    isQuick: true,
+    usesLeftovers: false,
+    tags: ['غداء', 'ملوخية', 'جمبري', 'مصري', 'بورسعيدي'],
+    imageUrl: '',
+    svgFallbackIcon: 'soup'
+  },
+  {
+    id: 'rec_fried_shrimp_egyptian',
+    name: 'جمبري مقلي مقرمش على الطريقة المصرية',
+    mealType: 'lunch',
+    prepTimeMinutes: 30,
+    baseServings: 4,
+    cuisine: 'egyptian',
+    ingredients: [
+      { name: 'جمبري وسط أو جامبو مقشر', quantity: '500 جرام', baseAmount: 500, unit: 'جرام' },
+      { name: 'دقيق', quantity: '1.5 كوب', baseAmount: 1.5, unit: 'كوب' },
+      { name: 'نشا', quantity: '3 ملاعق كبيرة', baseAmount: 3, unit: 'ملعقة كبيرة' },
+      { name: 'ثوم مهروس وليمون وكمون', quantity: '4 فصوص', baseAmount: 4, unit: 'فص' },
+      { name: 'زيت غزير للقلي', quantity: '2 كوب', baseAmount: 2, unit: 'كوب' }
+    ],
+    steps: [
+      'تبلي الجمبري بالثوم المهروس وعصير الليمون والكمون والملح والفلفل والبابريكا واتركيه 15 دقيقة.',
+      'اخلطي الدقيق مع النشا ورشة كمون وكركم وبيكنج بودر خفيف للحصول على طبقة مقرمشة.',
+      'اغمسي الجمبري في خليط الدقيق ثم انفضي الزائد ويمكن تمريره سريعاً في ماء بارد ثم الدقيق لقرمشة إضافية.',
+      'اقلي الجمبري في زيت ساخن 2 إلى 3 دقائق حتى يصبح ذهبياً ومقرمشاً وصفيه على مناديل المطبخ وقدميه مع الطحينة.'
+    ],
+    budgetCategory: 'مأكولات بحرية',
+    estimatedCostEgp: 215,
+    isVeryBudget: false,
+    isQuick: true,
+    usesLeftovers: false,
+    tags: ['غداء', 'جمبري', 'مقلي', 'مصري', 'بحريات'],
+    imageUrl: '',
+    svgFallbackIcon: 'meat'
+  },
+  {
+    id: 'rec_sayadeya_shrimp_rice',
+    name: 'أرز صيادية بالجمبري والبصل المكرمل',
+    mealType: 'lunch',
+    prepTimeMinutes: 35,
+    baseServings: 4,
+    cuisine: 'egyptian',
+    ingredients: [
+      { name: 'جمبري منظف', quantity: '400 جرام', baseAmount: 400, unit: 'جرام' },
+      { name: 'أرز مصري مغسول', quantity: '2 كوب', baseAmount: 2, unit: 'كوب' },
+      { name: 'بصل مفروم', quantity: '2 حبة كبيرة', baseAmount: 2, unit: 'حبة' },
+      { name: 'كمون وقرفة وملح', quantity: '2 ملعقة صغيرة', baseAmount: 2, unit: 'ملعقة صغيرة' },
+      { name: 'زيت', quantity: '3 ملاعق كبيرة', baseAmount: 3, unit: 'ملعقة كبيرة' }
+    ],
+    steps: [
+      'حمري البصل في الزيت مع التقليب المستمر حتى يصبح بني اللون مكرمل بدون احتراق.',
+      'أضيفي كوبين ونصف ماء ساخن مع الكمون ورشة القرفة والملح واتركيه يغلي ليأخذ اللون البني الغني.',
+      'شوحي الجمبري في طاسة جانبية دقيقتين مع فص ثوم وكمون، ثم أضيفي الأرز إلى ماء البصل المغلي.',
+      'عندما يتشرب الأرز، وزعي الجمبري على الوجه وهدئي النار 15 دقيقة حتى ينضج تماماً وقدميه ساخناً.'
+    ],
+    budgetCategory: 'مأكولات بحرية',
+    estimatedCostEgp: 195,
+    isVeryBudget: false,
+    isQuick: true,
+    usesLeftovers: false,
+    tags: ['غداء', 'أرز', 'صيادية', 'جمبري', 'مصري'],
+    imageUrl: '',
+    svgFallbackIcon: 'koshary'
+  },
+  {
+    id: 'rec_kabsa_shrimp_gulf',
+    name: 'كبسة جمبري خليجية بالبهارات واللومي',
+    mealType: 'lunch',
+    prepTimeMinutes: 40,
+    baseServings: 4,
+    cuisine: 'arab',
+    ingredients: [
+      { name: 'جمبري مقشر', quantity: '500 جرام', baseAmount: 500, unit: 'جرام' },
+      { name: 'أرز بسمتي منقوع', quantity: '2 كوب', baseAmount: 2, unit: 'كوب' },
+      { name: 'طماطم ومعجون طماطم', quantity: '2 حبة وملعقة صلصة', baseAmount: 2, unit: 'حبة' },
+      { name: 'بصل وثوم', quantity: '1 بصلة و3 فصوص', baseAmount: 1, unit: 'حبة' },
+      { name: 'لومي وبهارات كبسة وهيل وقرفة', quantity: '1 ملعقة كبيرة', baseAmount: 1, unit: 'ملعقة كبيرة' }
+    ],
+    steps: [
+      'شوحي البصل والثوم والبهارات الصحيحة واللومي في الزيت أو السمن حتى تفوح الرائحة.',
+      'أضيفي الطماطم ومعجون الطماطم والجمبري وبهارات الكبسة وقلبي 3 دقائق ثم ارفعي الجمبري جانباً.',
+      'أضيفي 3 أكواب ماء ساخن والأرز البسمتي المصفى واضبطي الملح.',
+      'اتركي الأرز على نار هادئة حتى ينضج ثم أعيدي الجمبري على الوجه 5 دقائق وقدميها مع الدقوس.'
+    ],
+    budgetCategory: 'مأكولات بحرية',
+    estimatedCostEgp: 225,
+    isVeryBudget: false,
+    isQuick: false,
+    usesLeftovers: false,
+    tags: ['غداء', 'كبسة', 'جمبري', 'عربي', 'خليجي'],
+    imageUrl: '',
+    svgFallbackIcon: 'koshary'
+  },
+  {
+    id: 'rec_moroccan_seafood_tagine',
+    name: 'طاجن سمك وجمبري مغربي بالشرمولة',
+    mealType: 'lunch',
+    prepTimeMinutes: 45,
+    baseServings: 4,
+    cuisine: 'arab',
+    ingredients: [
+      { name: 'سمك فيليه أو جزل وجمبري', quantity: '600 جرام مشكلة', baseAmount: 600, unit: 'جرام' },
+      { name: 'كزبرة وبقدونس مفرومين', quantity: '1 حزمة', baseAmount: 1, unit: 'حزمة' },
+      { name: 'ثوم وعصير ليمون', quantity: '5 فصوص وليمونة', baseAmount: 5, unit: 'فص' },
+      { name: 'طماطم وجزر وفلفل ألوان', quantity: '3 حبات', baseAmount: 3, unit: 'حبة' },
+      { name: 'كمون وبابريكا وزيت زيتون', quantity: '3 ملاعق', baseAmount: 3, unit: 'ملعقة كبيرة' }
+    ],
+    steps: [
+      'اخلطي الكزبرة والبقدونس والثوم والكمون والبابريكا والملح والليمون وزيت الزيتون لعمل تتبيلة الشرمولة المغربية.',
+      'تبلي السمك والجمبري بنصف الشرمولة واتركيها 15 دقيقة.',
+      'رصي شرائح الجزر والطماطم والفلفل في الطاجن مع باقي الشرمولة ونصف كوب ماء.',
+      'رتبي قطع السمك والجمبري على الوجه وغطي الطاجن على نار هادئة أو في الفرن 20 دقيقة حتى ينضج.'
+    ],
+    budgetCategory: 'مأكولات بحرية',
+    estimatedCostEgp: 230,
+    isVeryBudget: false,
+    isQuick: false,
+    usesLeftovers: false,
+    tags: ['غداء', 'سمك', 'جمبري', 'طاجن', 'مغربي', 'عربي'],
+    imageUrl: '',
+    svgFallbackIcon: 'soup'
+  },
+  {
+    id: 'rec_calamari_fried_egyptian',
+    name: 'سبيط (كاليماري) مقلي مقرمش بالدقيق والكمون',
+    mealType: 'lunch',
+    prepTimeMinutes: 30,
+    baseServings: 4,
+    cuisine: 'egyptian',
+    ingredients: [
+      { name: 'سبيط أو كاليماري مقطع حلقات', quantity: '500 جرام', baseAmount: 500, unit: 'جرام' },
+      { name: 'ثوم وليمون وكمون', quantity: '4 فصوص وليمونة', baseAmount: 4, unit: 'فص' },
+      { name: 'دقيق ونشا', quantity: '1.5 كوب', baseAmount: 1.5, unit: 'كوب' },
+      { name: 'زيت للقلي', quantity: '2 كوب', baseAmount: 2, unit: 'كوب' }
+    ],
+    steps: [
+      'نظفي السبيط وقطعيه شرائح أو حلقات وتبليه بالثوم والليمون والكمون والملح 20 دقيقة.',
+      'غلفي القطع بخليط الدقيق والنشا المتبل.',
+      'اقليه في زيت ساخن لمدة دقيقتين إلى 3 دقائق فقط حتى يصبح ذهبياً ويظل طرياً من الداخل.',
+      'قدميه ساخناً مع سلطة الطحينة والجرجير.'
+    ],
+    budgetCategory: 'مأكولات بحرية',
+    estimatedCostEgp: 190,
+    isVeryBudget: false,
+    isQuick: true,
+    usesLeftovers: false,
+    tags: ['غداء', 'سبيط', 'كاليماري', 'مصري', 'بحريات'],
+    imageUrl: '',
+    svgFallbackIcon: 'meat'
+  },
+  {
+    id: 'rec_shawarma_chicken_arab',
+    name: 'شاورما فراخ سوري بالثومية في الطاسة',
+    mealType: 'dinner',
+    prepTimeMinutes: 35,
+    baseServings: 4,
+    cuisine: 'arab',
+    ingredients: [
+      { name: 'صدور أو أوراك فراخ شرائح', quantity: '500 جرام', baseAmount: 500, unit: 'جرام' },
+      { name: 'زبادي وخل وعصير ليمون', quantity: '3 ملاعق', baseAmount: 3, unit: 'ملعقة كبيرة' },
+      { name: 'ثوم وبهارات شاورما وبابريكا', quantity: '1 ملعقة كبيرة', baseAmount: 1, unit: 'ملعقة كبيرة' },
+      { name: 'عيش صاج أو شامي ومخلل خيار', quantity: '4 أرغفة', baseAmount: 4, unit: 'رغيف' }
+    ],
+    steps: [
+      'تبلي شرائح الفراخ بالزبادي والخل والليمون والثوم وبهارات الشاورما نصف ساعة على الأقل.',
+      'شوحي الفراخ في طاسة ساخنة على نار عالية مع ملعقة زيت حتى تتحمر وتنضج تماماً.',
+      'ادهني الخبز بالثومية ورتبي الشاورما ومخلل الخيار ولفيه رول.',
+      'حمصي السندوتشات في نفس الطاسة أو الجريل دقيقة من كل جانب وقدميها ساخنة.'
+    ],
+    budgetCategory: 'دواجن',
+    estimatedCostEgp: 110,
+    isVeryBudget: false,
+    isQuick: true,
+    usesLeftovers: false,
+    tags: ['عشاء', 'شاورما', 'فراخ', 'سوري', 'عربي'],
+    imageUrl: '',
+    svgFallbackIcon: 'meat'
+  },
+  {
+    id: 'rec_maqluba_arab',
+    name: 'مقلوبة خضار وفراخ شامية بالبهارات',
+    mealType: 'lunch',
+    prepTimeMinutes: 60,
+    baseServings: 4,
+    cuisine: 'arab',
+    ingredients: [
+      { name: 'قطع فراخ', quantity: '500 جرام', baseAmount: 500, unit: 'جرام' },
+      { name: 'أرز مصري أو بسمتي', quantity: '2 كوب', baseAmount: 2, unit: 'كوب' },
+      { name: 'باذنجان وبطاطس وقرنبيط شرائح', quantity: '3 حبات', baseAmount: 3, unit: 'حبة' },
+      { name: 'بهارات مقلوبة وقرفة وكركم وهيل', quantity: '1 ملعقة كبيرة', baseAmount: 1, unit: 'ملعقة كبيرة' }
+    ],
+    steps: [
+      'اسلقي قطع الفراخ مع البصل والبهارات الصحيحة واحتفظي بالمرقة، ثم حمري الفراخ خفيفاً.',
+      'اشوي أو حمري شرائح الباذنجان والبطاطس.',
+      'رصي في الحلة شرائح طماطم ثم الفراخ ثم الخضار ثم الأرز المتبل بالبهارات والكركم.',
+      'اسكبي المرقة الساخنة واتركيها على نار هادئة 25 دقيقة، ثم اهدأي 10 دقائق واقلبيها في طبق التقديم.'
+    ],
+    budgetCategory: 'وجبة عائلية',
+    estimatedCostEgp: 135,
+    isVeryBudget: false,
+    isQuick: false,
+    usesLeftovers: false,
+    tags: ['غداء', 'مقلوبة', 'فراخ', 'أرز', 'عربي', 'شامي'],
+    imageUrl: '',
+    svgFallbackIcon: 'koshary'
+  },
+  {
+    id: 'rec_bamia_meat_egyptian',
+    name: 'طاجن بامية باللحمة والصلصة المصرية',
+    mealType: 'lunch',
+    prepTimeMinutes: 60,
+    baseServings: 4,
+    cuisine: 'egyptian',
+    ingredients: [
+      { name: 'بامية مقمعة', quantity: '500 جرام', baseAmount: 500, unit: 'جرام' },
+      { name: 'لحمة مكعبات', quantity: '400 جرام', baseAmount: 400, unit: 'جرام' },
+      { name: 'عصير طماطم وبصل وثوم', quantity: '2.5 كوب', baseAmount: 2.5, unit: 'كوب' },
+      { name: 'سمنة وملح وفلفل وكزبرة ناشفة', quantity: '1 ملعقة كبيرة', baseAmount: 1, unit: 'ملعقة كبيرة' }
+    ],
+    steps: [
+      'شوحي البصل واللحمة في السمنة حتى يتغير لونها ثم أضيفي ماء مغلي واتركيها تقترب من النضج.',
+      'أضيفي عصير الطماطم والبامية واتركيها تتسبك مع الملح والفلفل.',
+      'جهزي طشة ثوم وكزبرة وأضيفيها للطاجن، ثم أدخليه الفرن 15 دقيقة حتى يتحمر الوجه وقدميه مع الأرز بالشعرية.'
+    ],
+    budgetCategory: 'وجبة بيتية',
+    estimatedCostEgp: 145,
+    isVeryBudget: false,
+    isQuick: false,
+    usesLeftovers: false,
+    tags: ['غداء', 'بامية', 'لحمة', 'طاجن', 'مصري'],
+    imageUrl: '',
+    svgFallbackIcon: 'soup'
+  }
 );
 
 RECIPES.push(...EXTRA_EGYPTIAN_RECIPES);

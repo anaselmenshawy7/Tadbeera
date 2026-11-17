@@ -2,8 +2,7 @@
  * Keep tab identifiers stable: they are used by persisted UI state and screen routing.
  */
 export type ActiveTab = 'home' | 'food' | 'budget' | 'daily' | 'saved' | 'household';
-export type ViewMode = 'emulator' | 'code' | 'tests';
-export type SavedSubTab = 'shopping' | 'recipes' | 'tips' | 'budgets' | 'household';
+export type SavedSubTab = 'shopping';
 export type MealTypeFilter = 'all' | 'breakfast' | 'lunch' | 'dinner';
 
 /** Human-readable labels for the current primary tabs.

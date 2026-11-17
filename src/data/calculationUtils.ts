@@ -48,6 +48,8 @@ export interface TedbeeraBackupData {
   inventoryItems?: Record<string, unknown>[];
   householdTasks?: Record<string, unknown>[];
   savingsGoals?: Record<string, unknown>[];
+  customRecipes?: Record<string, unknown>[];
+  financeTransactions?: Record<string, unknown>[];
 }
 
 export const REWARD_PLAN_STORAGE_KEY = 'tedbeera_phase4d_weekly_plan_unlocked';
@@ -253,7 +255,7 @@ export function reconcileBudgetAllocations(
   expenses: ExpenseRecord[]
 ) {
   const safeTotal = Math.max(0, isNaN(totalBudget) ? 0 : totalBudget);
-  const totalAllocatedRaw = categories.map((cat, i) => {
+  const totalAllocatedRaw = categories.map((_cat, i) => {
     const pct = percentages[i] || 0;
     return Math.round((safeTotal * pct) / 100);
   });
@@ -380,7 +382,9 @@ export function createBackupPayload(data: TedbeeraBackupData): TedbeeraBackupPay
       householdProfile: data.householdProfile && typeof data.householdProfile === 'object' ? data.householdProfile : null,
       inventoryItems: Array.isArray(data.inventoryItems) ? data.inventoryItems.filter(item => item && typeof item === 'object') : [],
       householdTasks: Array.isArray(data.householdTasks) ? data.householdTasks.filter(item => item && typeof item === 'object') : [],
-      savingsGoals: Array.isArray(data.savingsGoals) ? data.savingsGoals.filter(item => item && typeof item === 'object') : []
+      savingsGoals: Array.isArray(data.savingsGoals) ? data.savingsGoals.filter(item => item && typeof item === 'object') : [],
+      customRecipes: Array.isArray(data.customRecipes) ? data.customRecipes.filter(item => item && typeof item === 'object') : [],
+      financeTransactions: Array.isArray(data.financeTransactions) ? data.financeTransactions.filter(item => item && typeof item === 'object') : []
     }
   };
 }
@@ -493,6 +497,12 @@ export function validateBackupPayload(raw: unknown): { isValid: boolean; error?:
   const inventoryItems = Array.isArray(data.inventoryItems) ? data.inventoryItems.filter((item: any) => item && typeof item === 'object' && !Array.isArray(item)) : [];
   const householdTasks = Array.isArray(data.householdTasks) ? data.householdTasks.filter((item: any) => item && typeof item === 'object' && !Array.isArray(item)) : [];
   const savingsGoals = Array.isArray(data.savingsGoals) ? data.savingsGoals.filter((item: any) => item && typeof item === 'object' && !Array.isArray(item)) : [];
+  const customRecipes = Array.isArray(data.customRecipes)
+    ? data.customRecipes.filter((item: any) => item && typeof item === 'object' && !Array.isArray(item) && typeof item.id === 'string' && typeof item.name === 'string')
+    : [];
+  const financeTransactions = Array.isArray(data.financeTransactions)
+    ? data.financeTransactions.filter((item: any) => item && typeof item === 'object' && !Array.isArray(item))
+    : [];
 
   return {
     isValid: true,
@@ -516,7 +526,9 @@ export function validateBackupPayload(raw: unknown): { isValid: boolean; error?:
       householdProfile,
       inventoryItems,
       householdTasks,
-      savingsGoals
+      savingsGoals,
+      customRecipes,
+      financeTransactions
     }
   };
 }
@@ -772,7 +784,7 @@ export interface DonutSegment {
 }
 
 export const DONUT_PALETTE = [
-  '#0D47A1', // Tedbeera Deep Blue
+  '#1E5631', // Tedbeera Deep Green
   '#047857', // Emerald Green
   '#D97706', // Warm Amber
   '#7C3AED', // Vivid Purple

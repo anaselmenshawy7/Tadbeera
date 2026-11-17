@@ -16,7 +16,7 @@ export function ShoppingTotalsSummary({ totals, items }: ShoppingTotalsSummaryPr
             {totals.isFullyPriced ? 'إجمالي النواقص التقديري:' : 'مجموع تقديري جزئي (للأصناف المسعرة):'}
           </span>
           <div className="flex items-baseline gap-2">
-            <span className="text-xl font-black text-[#0D47A1]">
+            <span className="text-xl font-black text-[#1E5631]">
               {totals.knownTotal} جنيه مصري
             </span>
             {!totals.isFullyPriced && (

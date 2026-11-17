@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Tedbeera Egypt Brand Palette -->
-    <color name="primary_blue">#0D47A1</color>
-    <color name="primary_blue_variant">#002171</color>
+    <color name="primary_blue">#1E5631</color>
+    <color name="primary_blue_variant">#626B49</color>
     <color name="light_bg">#F9FAFB</color>
     <color name="accent_yellow">#FFB300</color>
     <color name="soft_highlight">#FFE54C</color>

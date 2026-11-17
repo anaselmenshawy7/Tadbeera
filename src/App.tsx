@@ -13,55 +13,38 @@ import {
   Share2,
   AlertTriangle,
   Info,
-  CheckCircle2,
   ShoppingCart,
   Search,
-  Download,
-  Upload,
-  FolderCode,
-  Smartphone,
-  FlaskConical,
-  Copy,
   ChevronRight,
-  ShieldCheck,
   Clock,
   Sparkles,
   ArrowRight,
   Settings,
   Users,
   Edit3,
-  RotateCcw,
   Tag,
   Receipt,
   Car,
   Home,
   PiggyBank,
-  CheckSquare,
-  Square,
   FileDown,
   FileUp,
   X,
-  HelpCircle,
   Calendar,
   PieChart,
   Mic,
-  MicOff,
   Award,
-  Volume2,
   Play,
   Tv,
   CalendarCheck,
   Lock,
   Unlock,
-  ListPlus,
-  XCircle
+  ExternalLink
 } from 'lucide-react';
 import {
   COMMON_INGREDIENTS,
   RECIPES,
-  PRACTICAL_BUDGET_TIPS,
   DAILY_IDEAS,
-  DAILY_CHALLENGES,
   DEFAULT_BUDGET_CATEGORIES,
   BUDGET_PRESETS,
   getDeterministicDailyChallenge,
@@ -75,16 +58,13 @@ import {
   ShoppingItem,
   ShoppingTotals,
   TedbeeraBackupData,
-  CategorySpendingAnalytics,
   PaydayCountdownResult,
   DonutSegment,
   VoiceRecognitionState,
   parseSafeQuantity,
   parseSafePrice,
   calculateLineTotal,
-  formatPriceDisplay,
   calculateShoppingTotals,
-  normalizeShoppingItem,
   normalizeShoppingItemsList,
   reconcileBudgetAllocations,
   formatWhatsAppShoppingMessage,
@@ -100,7 +80,6 @@ import {
   calculateUniqueAchievementCount,
   toggleTriedTipId,
   toggleSavedTipId,
-  DONUT_PALETTE,
   REWARD_PLAN_STORAGE_KEY,
   REMINDER_STORAGE_KEY
 } from './data/calculationUtils';
@@ -116,20 +95,14 @@ import {
   WEEKLY_DAYS_SCHEDULE,
   getRecipeById,
   calculateRecipeScaledCost,
-  calculateWeeklyPlanTotalCost,
   consolidateWeeklyPlanIngredients,
-  convertConsolidatedToShoppingItems,
-  DayMealPlan,
-  ConsolidatedPlanIngredient
+  convertConsolidatedToShoppingItems
 } from './data/weeklyMealPlan';
-import { ANDROID_CODE_SAMPLES } from './data/androidFilesContent';
 import {
-  AFFILIATE_PARTNERS_CONFIG,
-  AffiliatePartnerDeal,
-  getActiveVerifiedDeals,
   matchDealsForShoppingItems
 } from './data/affiliateDeals';
 import { PWAInstallButton } from './components/PWAInstallButton';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { ShoppingTotalsSummary } from './features/shopping/ShoppingTotalsSummary';
 // Online recipe discovery is intentionally mounted as its own focused kitchen sub-screen.
 // The dedicated online search always attempts remote recipe providers before local fallbacks.
@@ -144,8 +117,10 @@ const IngredientRecipeFinder = React.lazy(() =>
   import('./features/recipes/IngredientRecipeFinder').then(module => ({ default: module.IngredientRecipeFinder }))
 );
 import { householdProfileRepository } from './features/household/householdRepository';
+import { financeTransactionsRepository } from './features/finance/financeRepository';
+import { isFinanceTransaction, type FinanceTransaction } from './features/finance/financeModels';
 
-import type { ActiveTab, ViewMode, SavedSubTab, MealTypeFilter } from './app/navigation';
+import type { ActiveTab, MealTypeFilter } from './app/navigation';
 
 
 interface MicrophonePermissionPlugin {
@@ -350,9 +325,8 @@ export default function App() {
     };
   }, [isNativeApp]);
 
-  const [viewMode, setViewMode] = useState<ViewMode>('emulator');
+  // Direct full-screen app state (all 5 core tabs live in App)
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
-  const [savedSubTab, setSavedSubTab] = useState<SavedSubTab>('shopping');
 
   // Food State
   const [mealFilter, setMealFilter] = useState<MealTypeFilter>('all');
@@ -365,11 +339,23 @@ export default function App() {
       return 4;
     }
   });
-  const [selectedIngredients, setSelectedIngredients] = useState<string[]>(['بيض', 'طماطم', 'بصل']);
+  const [selectedIngredients, setSelectedIngredients] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('tedbeera_custom_pantry');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return ['بيض', 'طماطم', 'بصل'];
+  });
   const [isVeryBudgetFilter, setIsVeryBudgetFilter] = useState(false);
   const [isQuickFilter, setIsQuickFilter] = useState(false);
   const [usesLeftoversFilter, setUsesLeftoversFilter] = useState(false);
   const [isZeroMissingOnly, setIsZeroMissingOnly] = useState(false);
+  const [isSavedRecipesFilter, setIsSavedRecipesFilter] = useState(false);
   const [selectedRecipeModal, setSelectedRecipeModal] = useState<Recipe | null>(null);
   const [kitchenView, setKitchenView] = useState<'main' | 'offline' | 'online'>('main');
   const [offlineRecipeQuery, setOfflineRecipeQuery] = useState('');
@@ -414,8 +400,16 @@ export default function App() {
   });
 
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(() => {
+    const mapHouseholdCategory = (categoryId: string): string => {
+      if (categoryId === 'طعام') return 'food';
+      if (categoryId === 'فواتير') return 'bills';
+      if (categoryId === 'مواصلات') return 'transport';
+      return 'household';
+    };
+
     try {
       const stored = localStorage.getItem('tedbeera_expenses');
+      let baseExpenses: ExpenseRecord[] = [];
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
@@ -426,10 +420,41 @@ export default function App() {
             date: String(e.date || new Date().toISOString().split('T')[0]),
             description: String(e.description || 'مصروف عام')
           }));
-          return removeSeedDemoExpenses(normalizedExpenses);
+          baseExpenses = removeSeedDemoExpenses(normalizedExpenses);
         }
       }
+
+      if (localStorage.getItem('tedbeera_finance_migrated_v1') !== 'true') {
+        const legacyTxns = financeTransactionsRepository.read();
+        const existingIds = new Set(baseExpenses.map(e => e.id));
+        const migratedExpenses: ExpenseRecord[] = legacyTxns
+          .filter(t => t.type === 'expense' && t.amount > 0)
+          .map(t => ({
+            id: `hh_${t.id}`,
+            categoryId: mapHouseholdCategory(t.categoryId),
+            amount: t.amount,
+            date: t.date,
+            description: t.description || t.categoryId || 'مصروف منزلي'
+          }))
+          .filter(e => !existingIds.has(e.id));
+
+        if (migratedExpenses.length > 0) {
+          baseExpenses = [...migratedExpenses, ...baseExpenses];
+        }
+        try {
+          localStorage.setItem('tedbeera_finance_migrated_v1', 'true');
+        } catch {}
+      }
+
+      return baseExpenses;
+    } catch {
       return [];
+    }
+  });
+
+  const [extraIncomeRecords, setExtraIncomeRecords] = useState<FinanceTransaction[]>(() => {
+    try {
+      return financeTransactionsRepository.read().filter(t => t.type === 'income');
     } catch {
       return [];
     }
@@ -938,16 +963,19 @@ export default function App() {
     showToast('تم إغلاق الإعلان البيني بنجاح واستئناف التطبيق ✓');
   };
 
-  // Code Explorer State
-  const [selectedAndroidFile, setSelectedAndroidFile] = useState<string>('android/app/src/main/java/com/tedbeera/egypt/MainActivity.kt');
-  const [copiedCode, setCopiedCode] = useState(false);
-
   // Fallback image error handling
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
 
   const handleImageError = (id: string) => {
     setBrokenImages(prev => ({ ...prev, [id]: true }));
   };
+
+  // Sync selected pantry ingredients safely
+  useEffect(() => {
+    try {
+      localStorage.setItem('tedbeera_custom_pantry', JSON.stringify(selectedIngredients));
+    } catch {}
+  }, [selectedIngredients]);
 
   // Sync family size safely
   useEffect(() => {
@@ -1069,6 +1097,7 @@ export default function App() {
       if (isVeryBudgetFilter && !recipe.isVeryBudget) return false;
       if (isQuickFilter && !recipe.isQuick) return false;
       if (usesLeftoversFilter && !recipe.usesLeftovers) return false;
+      if (isSavedRecipesFilter && !savedRecipeIds.includes(recipe.id)) return false;
       return true;
     }).map(recipe => {
       const available = recipe.ingredients.filter(ing =>
@@ -1093,7 +1122,7 @@ export default function App() {
       if (!a.isCompleteMatch && b.isCompleteMatch) return 1;
       return (b.availableCount / b.totalCount) - (a.availableCount / a.totalCount);
     });
-  }, [mealFilter, selectedIngredients, isVeryBudgetFilter, isQuickFilter, usesLeftoversFilter, isZeroMissingOnly, familySize]);
+  }, [allRecipes, mealFilter, selectedIngredients, isVeryBudgetFilter, isQuickFilter, usesLeftoversFilter, isZeroMissingOnly, isSavedRecipesFilter, savedRecipeIds, familySize]);
 
   // Toggle Ingredient
   const toggleIngredient = (name: string) => {
@@ -1326,6 +1355,41 @@ export default function App() {
     showToast(`تم دمج ${missing.length} من النواقص في قائمة المشتريات بنجاح 🛒`);
   };
 
+  const handleAddLowStockToShopping = (itemToAdd: { name: string; unit: string; quantity: number }) => {
+    const normalizedName = itemToAdd.name.trim();
+    if (!normalizedName) return;
+    const normalizedUnit = (itemToAdd.unit || 'حبة').trim();
+    const safeQty = parseSafeQuantity(itemToAdd.quantity || 1);
+
+    setShoppingItems(prev => {
+      const updated = [...prev];
+      const existingIndex = updated.findIndex(
+        item => item.name.trim().toLowerCase() === normalizedName.toLowerCase() && item.unit === normalizedUnit
+      );
+
+      if (existingIndex >= 0) {
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          quantity: Math.round((updated[existingIndex].quantity + safeQty) * 10) / 10,
+          isChecked: false
+        };
+      } else {
+        updated.push({
+          id: Math.random().toString(36).substring(2, 9),
+          name: normalizedName,
+          quantity: safeQty,
+          unit: normalizedUnit,
+          unitPrice: null,
+          isChecked: false
+        });
+      }
+
+      return updated;
+    });
+
+    showToast(`تمت إضافة "${normalizedName}" لقائمة النواقص 🛒`);
+  };
+
   // ==========================================
   // Strict 100% Budget Redistribution Engine
   // ==========================================
@@ -1485,6 +1549,15 @@ export default function App() {
     showToast('تم حذف المصروف');
   };
 
+  const handleDeleteExtraIncome = (id: string) => {
+    setExtraIncomeRecords(prev => prev.filter(item => item.id !== id));
+    try {
+      const remaining = financeTransactionsRepository.read().filter(item => item.id !== id);
+      financeTransactionsRepository.write(remaining);
+    } catch {}
+    showToast('تم حذف بند الدخل الإضافي');
+  };
+
   const handleSaveBudgetPlan = () => {
     const plan: SavedBudgetPlan = {
       id: Math.random().toString(36).substring(2, 9),
@@ -1605,7 +1678,7 @@ export default function App() {
     showToast(parsed !== null ? 'تم تحديث السعر وإعادة الحساب فوراً 🏷️' : 'تم تعيين الصنف كغير مسعر');
   };
 
-  // Feature 1: Share Unpurchased Shopping List via WhatsApp
+  // Feature 1: Share Unpurchased Shopping List via WhatsApp (WebView & PWA safe)
   const handleShareShoppingWhatsApp = () => {
     const shareResult = formatWhatsAppShoppingMessage(shoppingItems);
     if (shareResult.isEmpty) {
@@ -1614,9 +1687,16 @@ export default function App() {
     }
 
     const waUrl = `https://wa.me/?text=${encodeURIComponent(shareResult.message)}`;
-    const win = window.open(waUrl, '_blank');
-    if (!win) {
-      window.location.href = waUrl;
+    if (isNativeApp) {
+      window.location.assign(waUrl);
+    } else {
+      const link = document.createElement('a');
+      link.href = waUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
     showToast(`تم تجهيز ${shareResult.unpurchasedCount} طلب للمشاركة عبر واتساب 📲`);
   };
@@ -1662,7 +1742,9 @@ export default function App() {
         householdProfile: readFeatureBackupValue<Record<string, unknown> | null>('tedbeera_household_profile_v1', null),
         inventoryItems: readFeatureBackupValue<Record<string, unknown>[]>('tedbeera_inventory_v1', []),
         householdTasks: readFeatureBackupValue<Record<string, unknown>[]>('tedbeera_household_tasks_v1', []),
-        savingsGoals: readFeatureBackupValue<Record<string, unknown>[]>('tedbeera_savings_goals_v1', [])
+        savingsGoals: readFeatureBackupValue<Record<string, unknown>[]>('tedbeera_savings_goals_v1', []),
+        customRecipes: customRecipes as unknown as Record<string, unknown>[],
+        financeTransactions: financeTransactionsRepository.read() as unknown as Record<string, unknown>[]
       });
 
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -1721,9 +1803,18 @@ export default function App() {
       'tedbeera_custom_pantry', 'tedbeera_phase4c_tried_tips', 'tedbeera_payday_day',
       REWARD_PLAN_STORAGE_KEY, REMINDER_STORAGE_KEY, 'tedbeera_daily_completed',
       'tedbeera_household_profile_v1', 'tedbeera_inventory_v1',
-      'tedbeera_household_tasks_v1', 'tedbeera_savings_goals_v1', 'tedbeera_phase4d_reminder_time'
+      'tedbeera_household_tasks_v1', 'tedbeera_savings_goals_v1', 'tedbeera_phase4d_reminder_time',
+      'tedbeera_custom_recipes', 'tedbeera_finance_transactions_v1', 'tedbeera_finance_migrated_v1'
     ];
-    const storageSnapshot = new Map(restoreStorageKeys.map(key => [key, localStorage.getItem(key)]));
+    const storageSnapshot = new Map(
+      restoreStorageKeys.map(key => {
+        try {
+          return [key, localStorage.getItem(key)] as const;
+        } catch {
+          return [key, null] as const;
+        }
+      })
+    );
 
     // 2. Create Pre-Restore React State Snapshot for Rollback Protection
     const preRestoreSnapshot = {
@@ -1737,6 +1828,8 @@ export default function App() {
       savedTipIds,
       savedBudgets,
       selectedIngredients,
+      customRecipes,
+      extraIncomeRecords,
       triedTipIds,
       paydayDay,
       weeklyPlanUnlocked: isWeeklyPlanUnlocked,
@@ -1806,6 +1899,16 @@ export default function App() {
       if (d.savingsGoals !== undefined) {
         localStorage.setItem('tedbeera_savings_goals_v1', JSON.stringify(d.savingsGoals));
       }
+      if (d.customRecipes !== undefined) {
+        const restoredCustomRecipes = d.customRecipes as unknown as Recipe[];
+        setCustomRecipes(restoredCustomRecipes);
+        localStorage.setItem('tedbeera_custom_recipes', JSON.stringify(restoredCustomRecipes));
+      }
+      if (d.financeTransactions !== undefined) {
+        const validTransactions = (d.financeTransactions as unknown[]).filter(isFinanceTransaction);
+        financeTransactionsRepository.write(validTransactions);
+        setExtraIncomeRecords(validTransactions.filter(t => t.type === 'income'));
+      }
 
       const reminderResult = d.reminderEnabled
         ? await getLocalNotificationService().scheduleDailyReminder(...restoredReminderTime.split(':').map(Number) as [number, number])
@@ -1840,6 +1943,8 @@ export default function App() {
       setSavedTipIds(preRestoreSnapshot.savedTipIds);
       setSavedBudgets(preRestoreSnapshot.savedBudgets);
       setSelectedIngredients(preRestoreSnapshot.selectedIngredients);
+      setCustomRecipes(preRestoreSnapshot.customRecipes);
+      setExtraIncomeRecords(preRestoreSnapshot.extraIncomeRecords);
       setTriedTipIds(preRestoreSnapshot.triedTipIds);
       setPaydayDay(preRestoreSnapshot.paydayDay);
       setIsWeeklyPlanUnlocked(preRestoreSnapshot.weeklyPlanUnlocked);
@@ -1856,6 +1961,9 @@ export default function App() {
   const handleWipeAllData = async () => {
     await getLocalNotificationService().cancelDailyReminder();
     setSavedRecipeIds([]);
+    setCustomRecipes([]);
+    setExtraIncomeRecords([]);
+    setSelectedIngredients(['بيض', 'طماطم', 'بصل']);
     setSavedTipIds([]);
     setTriedTipIds([]);
     setSavedBudgets([]);
@@ -1870,26 +1978,39 @@ export default function App() {
     setIsWeeklyPlanUnlocked(false);
     setIsDailyReminderEnabled(false);
 
-    localStorage.removeItem('tedbeera_saved_recipes');
-    localStorage.removeItem('tedbeera_phase4c_saved_tips');
-    localStorage.removeItem('tedbeera_saved_tips');
-    localStorage.removeItem('tedbeera_phase4c_tried_tips');
-    localStorage.removeItem('tedbeera_saved_budgets');
-    localStorage.removeItem('tedbeera_shopping_items');
-    localStorage.removeItem('tedbeera_expenses');
-    localStorage.removeItem('tedbeera_daily_completed');
-    localStorage.removeItem('tedbeera_family_size');
-    localStorage.removeItem('tedbeera_budget_amount');
-    localStorage.removeItem('tedbeera_categories');
-    localStorage.removeItem('tedbeera_percentages');
-    localStorage.removeItem('tedbeera_payday_day');
-    localStorage.removeItem(REWARD_PLAN_STORAGE_KEY);
-    localStorage.removeItem(REMINDER_STORAGE_KEY);
-    localStorage.removeItem('tedbeera_phase4d_reminder_time');
-    localStorage.removeItem('tedbeera_household_profile_v1');
-    localStorage.removeItem('tedbeera_inventory_v1');
-    localStorage.removeItem('tedbeera_household_tasks_v1');
-    localStorage.removeItem('tedbeera_savings_goals_v1');
+    const keysToRemove = [
+      'tedbeera_saved_recipes',
+      'tedbeera_phase4c_saved_tips',
+      'tedbeera_saved_tips',
+      'tedbeera_phase4c_tried_tips',
+      'tedbeera_saved_budgets',
+      'tedbeera_shopping_items',
+      'tedbeera_expenses',
+      'tedbeera_daily_completed',
+      'tedbeera_family_size',
+      'tedbeera_budget_amount',
+      'tedbeera_categories',
+      'tedbeera_percentages',
+      'tedbeera_payday_day',
+      REWARD_PLAN_STORAGE_KEY,
+      REMINDER_STORAGE_KEY,
+      'tedbeera_phase4d_reminder_time',
+      'tedbeera_household_profile_v1',
+      'tedbeera_inventory_v1',
+      'tedbeera_household_tasks_v1',
+      'tedbeera_savings_goals_v1',
+      'tedbeera_custom_recipes',
+      'tedbeera_custom_pantry',
+      'tedbeera_finance_transactions_v1',
+      'tedbeera_finance_migrated_v1',
+      'tadbeera_online_recipes_v1',
+      'tedbeera_notification_test_sent_v1'
+    ];
+    keysToRemove.forEach(key => {
+      try {
+        localStorage.removeItem(key);
+      } catch {}
+    });
 
     setIsWipeModalOpen(false);
     setIsSettingsModalOpen(false);
@@ -1904,69 +2025,7 @@ export default function App() {
   };
 
   return (
-    <div className={isNativeApp ? "h-[100dvh] min-h-0 w-full overflow-hidden bg-[#FBF8F1] text-[#3F4037] font-['Cairo',sans-serif] flex flex-col" : "min-h-screen bg-[#F4F0E7] text-[#3F4037] font-['Cairo',sans-serif] flex flex-col items-center"}>
-      {/* Top Header & View Mode Switcher */}
-      {!isNativeApp && <header className="w-full bg-[#626B49] text-white shadow-md sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#D8C69A] text-[#626B49] font-black flex items-center justify-center text-xl shadow-inner">
-              تد
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-lg tracking-tight">تدبيرة — كل جنيه ليه قيمة 💛</h1>
-                <span className="bg-[#FFE54C] text-[#626B49] text-xs font-bold px-2 py-0.5 rounded-full">ميزانية مصري 🇪🇬</span>
-              </div>
-              <p className="text-xs text-blue-100">وفّر بذكاء، ودبّر بيتك، وخلي كل جنيه في مكانه.</p>
-            </div>
-          </div>
-
-          {/* Mode Switcher */}
-          <div className="flex items-center bg-[#002171] p-1 rounded-xl text-xs sm:text-sm font-semibold">
-            <button
-              onClick={() => setViewMode('emulator')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-                viewMode === 'emulator' ? 'bg-[#D8C69A] text-[#626B49] shadow' : 'text-blue-100 hover:text-white'
-              }`}
-            >
-              <Smartphone className="w-4 h-4" />
-              <span>محاكي التطبيق (Live)</span>
-            </button>
-            <button
-              onClick={() => setViewMode('code')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-                viewMode === 'code' ? 'bg-[#D8C69A] text-[#626B49] shadow' : 'text-blue-100 hover:text-white'
-              }`}
-            >
-              <FolderCode className="w-4 h-4" />
-              <span>كود أندرويد الأصلي (42 ملف)</span>
-            </button>
-            <button
-              onClick={() => setViewMode('tests')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-                viewMode === 'tests' ? 'bg-[#D8C69A] text-[#626B49] shadow' : 'text-blue-100 hover:text-white'
-              }`}
-            >
-              <FlaskConical className="w-4 h-4" />
-              <span>الاختبارات الآلية (Unit Tests)</span>
-            </button>
-          </div>
-
-          {/* PWA Install Button & Direct Download ZIP Button */}
-          <div className="flex items-center gap-2">
-            <PWAInstallButton />
-            <a
-              href="/TedbeeraEgypt-Android.zip"
-              download="TedbeeraEgypt-Android.zip"
-              className="flex items-center gap-1.5 bg-blue-800/80 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm px-3.5 py-1.5 rounded-xl border border-blue-400/30 transition"
-            >
-              <Download className="w-4 h-4 text-[#D8C69A]" />
-              <span>تحميل (ZIP)</span>
-            </a>
-          </div>
-        </div>
-      </header>}
-
+    <div className="min-h-screen h-[100dvh] w-full overflow-hidden bg-[#FBF8F1] text-[#3F4037] font-['Cairo',sans-serif] flex flex-col">
       {/* Toast Notification */}
       {toastMessage && (
         <div role="status" aria-live="polite" className="fixed top-[calc(env(safe-area-inset-top)+12px)] left-3 right-3 z-[100] mx-auto max-w-md bg-[#626B49] text-white px-5 py-3 rounded-xl shadow-xl flex items-center justify-center gap-2 border border-[#D8C69A]">
@@ -1975,43 +2034,32 @@ export default function App() {
         </div>
       )}
 
-      {/* MAIN CONTAINER */}
-      <main className={isNativeApp ? "w-full flex-1 min-h-0 flex justify-center p-0" : "w-full max-w-6xl flex-1 px-4 py-6 flex justify-center"}>
-
-        {/* ---------------- VIEW 1: LIVE PHONE EMULATOR ---------------- */}
-        {viewMode === 'emulator' && (
-          <div className={isNativeApp ? "h-full min-h-0 w-full" : "flex flex-col items-center gap-4 w-full"}>
-            <div className={isNativeApp ? "h-full min-h-0 w-full max-w-none bg-white overflow-hidden flex flex-col" : "w-full max-w-md bg-white rounded-3xl shadow-2xl border-4 border-gray-800 overflow-hidden flex flex-col h-[780px]"}>
-            {/* Phone Top Notch / Status Bar */}
-            {!isNativeApp && ( <div className="bg-[#626B49] text-white px-5 py-2.5 flex items-center justify-between text-xs select-none">
-              <span className="font-bold tracking-wider">09:41</span>
-              <div className="w-20 h-4 bg-gray-900 rounded-full mx-auto opacity-70"></div>
-              <div className="flex items-center gap-1.5 text-[10px]">
-                <span>4G</span>
-                <span>📶</span>
-                <span>100% 🔋</span>
-              </div>
-            </div>)}
-
-            {/* Android Top App Bar */}
-            <div className="tadbeera-appbar bg-[#F5F0E5] text-[#43523D] px-4 py-3 flex items-center justify-between shadow-sm border-b border-[#E8E0D1]">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🇪🇬</span>
-                <span className="font-extrabold text-sm sm:text-base">تدبيرة — كل جنيه ليه قيمة 💛</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsSettingsModalOpen(true)}
-                  className="p-1.5 rounded-lg bg-[#E8EDDF] hover:bg-[#DCE5D3] text-[#5F7651] transition"
-                  title="إعدادات وأمان البيانات"
-                >
-                  <Settings className="w-4 h-4" />
-                </button>
-              </div>
+      {/* MAIN FULL-SCREEN APP CONTAINER */}
+      <main className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
+        {/* Top App Bar */}
+        <header className="tadbeera-appbar bg-[#F5F0E5] text-[#43523D] pt-[env(safe-area-inset-top)] shadow-sm border-b border-[#E8E0D1] shrink-0">
+          <div className="w-full max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xl shrink-0">🇪🇬</span>
+              <h1 className="font-extrabold text-sm sm:text-base truncate">تدبيرة — كل جنيه ليه قيمة 💛</h1>
             </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {!isNativeApp && <PWAInstallButton />}
+              <button
+                type="button"
+                onClick={() => setIsSettingsModalOpen(true)}
+                className="p-1.5 rounded-lg bg-[#E8EDDF] hover:bg-[#DCE5D3] text-[#5F7651] transition"
+                title="إعدادات وأمان البيانات"
+                aria-label="إعدادات وأمان البيانات"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </header>
 
-            {/* Scrollable Screen Content with shared layout clearance ensuring 70-90px breathing room */}
-            <div className={`tadbeera-screen-content flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 bg-[#FBF8F1] ${getBottomScrollPaddingClass(adStatus)} ${isNativeApp ? "pb-[calc(6rem+env(safe-area-inset-bottom))]" : ""}`}>
+        {/* Scrollable Screen Content with shared layout clearance ensuring 70-90px breathing room */}
+        <div className={`tadbeera-screen-content flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 bg-[#FBF8F1] [&>*]:max-w-2xl [&>*]:mx-auto [&>*]:w-full ${getBottomScrollPaddingClass(adStatus)} ${isNativeApp ? "pb-[calc(6rem+env(safe-area-inset-bottom))]" : "pb-[calc(1.5rem+env(safe-area-inset-bottom))]"}`}>
 
 
               {activeTab === 'home' && (
@@ -2036,25 +2084,71 @@ export default function App() {
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
                     <button type="button" onClick={() => setActiveTab('food')} className="text-right rounded-2xl border border-[#EEDFD4] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F7EDE4] text-[#A66D4C] flex items-center justify-center"><Utensils className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">المطبخ والوصفات</b><small className="block text-[10px] text-[#969184] mt-0.5">اختاري طبخة النهارده</small></button>
-                    <button type="button" onClick={() => { setSavedSubTab('shopping'); setActiveTab('saved'); }} className="text-right rounded-2xl border border-[#E9E1D3] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F4EEE2] text-[#98764C] flex items-center justify-center"><ShoppingCart className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">قائمة المشتريات</b><small className="block text-[10px] text-[#969184] mt-0.5">{shoppingItems.filter(item => !item.isChecked).length} أصناف لسه محتاجة تتجاب</small></button>
+                    <button type="button" onClick={() => setActiveTab('saved')} className="text-right rounded-2xl border border-[#E9E1D3] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F4EEE2] text-[#98764C] flex items-center justify-center"><ShoppingCart className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">قائمة المشتريات</b><small className="block text-[10px] text-[#969184] mt-0.5">{shoppingItems.filter(item => !item.isChecked).length} أصناف لسه محتاجة تتجاب</small></button>
                     <button type="button" onClick={() => setActiveTab('budget')} className="text-right rounded-2xl border border-[#E2E8DC] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#EEF1E8] text-[#667B58] flex items-center justify-center"><Wallet className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">ميزانية البيت</b><small className="block text-[10px] text-[#969184] mt-0.5">المبلغ المحدد: {budgetAmount || '—'} ج.م</small></button>
                     <button type="button" onClick={() => setActiveTab('household')} className="text-right rounded-2xl border border-[#E8E2D5] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F0EEE7] text-[#857B60] flex items-center justify-center"><Home className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">إدارة البيت</b><small className="block text-[10px] text-[#969184] mt-0.5">المخزون والمهام المنزلية</small></button>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <button type="button" onClick={() => { setSavedSubTab('shopping'); setActiveTab('saved'); }} className="rounded-xl bg-[#667B58] text-white py-2.5 px-3 text-[11px] font-bold flex items-center justify-center gap-1.5"><Plus className="w-4 h-4" /> إضافة نواقص للسوق</button>
-                    <button type="button" onClick={() => { setExpenseAmount(''); setExpenseDesc(''); setIsAddExpenseModalOpen(true); }} className="rounded-xl bg-[#F3EBDD] text-[#526748] border border-[#E8E0D1] py-2.5 px-3 text-[11px] font-bold flex items-center justify-center gap-1.5"><Receipt className="w-4 h-4" /> تسجيل مصروف</button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewItemName('');
+                        setNewItemQty('1');
+                        setNewItemUnit('حبة');
+                        setNewItemUnitPrice('');
+                        setIsAddItemModalOpen(true);
+                      }}
+                      className="min-h-[44px] rounded-xl bg-[#1E5631] hover:bg-[#2E7D32] text-white py-2.5 px-3 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
+                    >
+                      <Plus className="w-4 h-4 shrink-0" />
+                      <span>إضافة نواقص للسوق</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setExpenseAmount(''); setExpenseDesc(''); setIsAddExpenseModalOpen(true); }}
+                      className="min-h-[44px] rounded-xl bg-[#F3EBDD] text-[#526748] border border-[#E8E0D1] py-2.5 px-3 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
+                    >
+                      <Receipt className="w-4 h-4 shrink-0" />
+                      <span>تسجيل مصروف</span>
+                    </button>
                   </div>
-                  <div className="rounded-2xl border border-[#E8E1D3] bg-[#F3EBDD] p-3.5">
+                  <div className="rounded-2xl border border-[#E8E1D3] bg-[#F3EBDD] p-3.5 space-y-2.5">
                     <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-extrabold text-[#66563F]">💡 تدبيرة اليوم</span><span className={dailyCompleted ? "text-[10px] font-bold text-[#526748]" : "text-[10px] font-bold text-[#8A704D]"}>{dailyCompleted ? "أنجزتي تحدي النهارده ✓" : "خطوة صغيرة لبيت أهدى"}</span></div>
-                    <p className="text-[11px] text-[#796B56] leading-5 mt-1.5">{todayChallenge.title}</p>
-                    <button type="button" onClick={() => setActiveTab('daily')} className="mt-2 text-[11px] font-extrabold text-[#657A55] underline underline-offset-2">{dailyCompleted ? "راجعي أفكار التوفير" : "اعرفي تفاصيل تدبيرة اليوم"}</button>
+                    <p className="text-[11px] text-[#796B56] leading-5">{todayChallenge.title}</p>
+                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => { setDailyTipsViewMode('all'); setActiveTab('daily'); }}
+                        className="min-h-[40px] rounded-xl bg-[#1E5631] hover:bg-[#2E7D32] text-white px-3 py-1.5 text-[11px] font-bold transition whitespace-nowrap"
+                      >
+                        {dailyCompleted ? 'راجعي أفكار التوفير' : 'اعرفي تفاصيل تدبيرة اليوم'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setDailyTipsViewMode('saved'); setActiveTab('daily'); }}
+                        className="min-h-[40px] rounded-xl border border-[#D4C7AE] bg-white hover:bg-[#FAF6EC] text-[#526748] px-3 py-1.5 text-[11px] font-bold inline-flex items-center gap-1 transition whitespace-nowrap"
+                      >
+                        <Bookmark className="w-3.5 h-3.5 shrink-0" />
+                        <span>أفكاري المحفوظة ({savedTipIds.length})</span>
+                      </button>
+                    </div>
                   </div>
                 </section>
               )}
               {activeTab === 'household' && (
-                <React.Suspense fallback={<div className="rounded-2xl bg-white border border-[#E8E0D1] p-4 text-center text-xs text-[#667B58]">بنجهز إدارة البيت…</div>}>
-                  <HouseholdHub />
-                </React.Suspense>
+                <ErrorBoundary fallbackTitle="تعذر تحميل شاشة إدارة البيت">
+                  <React.Suspense fallback={<div className="rounded-2xl bg-white border border-[#E8E0D1] p-4 text-center text-xs text-[#667B58]">بنجهز إدارة البيت…</div>}>
+                    <HouseholdHub
+                      onAddLowStockToShopping={handleAddLowStockToShopping}
+                      budgetSummary={{
+                        totalBudget: parsedBudgetAmount,
+                        totalSpent: totalSpentAll,
+                        totalRemaining: totalRemainingAll
+                      }}
+                      onOpenBudget={() => setActiveTab('budget')}
+                    />
+                  </React.Suspense>
+                </ErrorBoundary>
               )}
               {/* ======================================================== */}
               {/* === TAB 1: تدبيرة الأكل === */}
@@ -2062,53 +2156,205 @@ export default function App() {
               {activeTab === 'food' && (
                 <div className="space-y-4">
                   {kitchenView === 'online' ? (
-                    <React.Suspense fallback={<div className="rounded-2xl border border-emerald-200 bg-white p-5 text-center text-sm text-gray-600">بنجهز مساعد الوصفات الصوتي…</div>}>
-                      <OnlineRecipeSearch familySize={familySize} onBack={() => setKitchenView('main')} />
-                    </React.Suspense>
+                    <ErrorBoundary fallbackTitle="تعذر تحميل البحث الصوتي عن الوصفات" onReset={() => setKitchenView('main')}>
+                      <React.Suspense fallback={<div className="rounded-2xl border border-emerald-200 bg-white p-5 text-center text-sm text-gray-600">بنجهز مساعد الوصفات الصوتي…</div>}>
+                        <OnlineRecipeSearch familySize={familySize} onBack={() => setKitchenView('main')} />
+                      </React.Suspense>
+                    </ErrorBoundary>
                   ) : kitchenView === 'offline' ? (
                     <section dir="rtl" className="space-y-3">
                       <div className="flex items-center justify-between gap-2">
-                        <button type="button" onClick={() => setKitchenView('main')} className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700">
+                        <button type="button" onClick={() => setKitchenView('main')} className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 min-h-[40px]">
                           <ChevronRight className="h-4 w-4" /> رجوع للمطبخ
                         </button>
                         <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-[10px] font-bold text-emerald-800">تعمل بدون إنترنت</span>
                       </div>
                       <div className="rounded-2xl bg-[#F1F5EC] p-4">
                         <h2 className="text-lg font-black text-[#40533A]">مكتبة وصفات تدبيرة 🌿</h2>
-                        <p className="mt-1 text-xs leading-5 text-[#68745F]">كل الوصفات المصرية والبيتية المحفوظة داخل التطبيق في مكان واحد، وتقدر تفتحها بدون إنترنت.</p>
+                        <p className="mt-1 text-xs leading-5 text-[#68745F]">كل الوصفات المصرية والبيتية المحفوظة داخل التطبيق في مكان واحد، وتقدر تفتحها وتفلترها بدون إنترنت.</p>
                       </div>
                       <input value={offlineRecipeQuery} onChange={event => setOfflineRecipeQuery(event.target.value)} placeholder="ابحث في الوصفات المجانية..." className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm outline-none focus:border-emerald-500" />
-                      <div className="text-[11px] text-gray-500">عدد الوصفات: {allRecipes.filter(recipe => recipe.name.toLocaleLowerCase('ar').includes(offlineRecipeQuery.trim().toLocaleLowerCase('ar'))).length}</div>
-                      <div className="space-y-2">
-                        {allRecipes.filter(recipe => recipe.name.toLocaleLowerCase('ar').includes(offlineRecipeQuery.trim().toLocaleLowerCase('ar'))).map(recipe => (
-                          <button key={recipe.id} type="button" onClick={() => setSelectedRecipeModal(recipe)} className="flex w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white p-2.5 text-right shadow-sm transition hover:border-emerald-300">
-                            <span className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-[#F1F5EC]">
-                              {recipe.imageUrl && !brokenImages[recipe.id] ? <img src={recipe.imageUrl} alt={recipe.name} loading="lazy" onError={() => handleImageError(recipe.id)} className="h-full w-full object-cover" /> : <SvgIllustration type={recipe.svgFallbackIcon || 'koshari'} />}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <strong className="block truncate text-sm text-gray-900">{recipe.name}</strong>
-                              <span className="mt-1 block text-[10px] text-gray-500">{recipe.mealType === 'breakfast' ? 'فطار' : recipe.mealType === 'lunch' ? 'غداء' : 'عشاء'} · {recipe.prepTimeMinutes} دقيقة · لـ {familySize} أفراد</span>
-                            </span>
-                            <span className="shrink-0 text-left">
-                              <strong className="block text-sm text-[#55764B]">~{getScaledCost(recipe)} ج.م</strong>
-                              <span className="text-[10px] text-gray-400">التفاصيل ←</span>
-                            </span>
+
+                      {/* Meal Category, Saved & Ready Filters */}
+                      <div className="flex gap-1.5 overflow-x-auto pb-1 text-xs items-center">
+                        {[
+                          { key: 'all', label: 'الكل 🍽️' },
+                          { key: 'breakfast', label: 'فطار 🍳' },
+                          { key: 'lunch', label: 'غداء 🍲' },
+                          { key: 'dinner', label: 'عشاء 🌙' }
+                        ].map(cat => (
+                          <button
+                            key={cat.key}
+                            type="button"
+                            onClick={() => setMealFilter(cat.key as MealTypeFilter)}
+                            className={`min-h-[40px] px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 transition ${
+                              mealFilter === cat.key
+                                ? 'bg-[#1E5631] text-white shadow-sm'
+                                : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            {cat.label}
                           </button>
                         ))}
-                        {allRecipes.filter(recipe => recipe.name.toLocaleLowerCase('ar').includes(offlineRecipeQuery.trim().toLocaleLowerCase('ar'))).length === 0 && (
-                          <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-center text-xs text-gray-500">ملقيناش وصفة بالاسم ده. جرّب كلمة تانية.</div>
-                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => setIsSavedRecipesFilter(prev => !prev)}
+                          className={`min-h-[40px] px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 transition flex items-center gap-1.5 ${
+                            isSavedRecipesFilter
+                              ? 'bg-[#D8C69A] text-[#3E3524] shadow-sm'
+                              : 'bg-white border border-[#E4DECF] text-[#626B49] hover:bg-[#FAF6EC]'
+                          }`}
+                        >
+                          <Bookmark className={`w-3.5 h-3.5 ${isSavedRecipesFilter ? 'fill-[#3E3524]' : ''}`} />
+                          <span>المحفوظة ({savedRecipeIds.length})</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setIsZeroMissingOnly(prev => !prev)}
+                          className={`min-h-[40px] px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 transition flex items-center gap-1.5 ${
+                            isZeroMissingOnly
+                              ? 'bg-[#1E5631] text-white shadow-sm'
+                              : 'bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-50'
+                          }`}
+                          title="إظهار فقط الوجبات الجاهزة بنسبة 100% دون أي مكونات ناقصة"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>اطبخ باللي عندي فقط</span>
+                          {isZeroMissingOnly && <Check className="w-3 h-3" />}
+                        </button>
                       </div>
+
+                      {/* Quick Dietary / Speed Filters */}
+                      <div className="flex flex-wrap gap-1.5 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => setIsVeryBudgetFilter(prev => !prev)}
+                          className={`min-h-[36px] px-2.5 py-1 rounded-xl font-bold transition whitespace-nowrap ${
+                            isVeryBudgetFilter ? 'bg-[#1E5631] text-white' : 'bg-white border border-gray-200 text-gray-700'
+                          }`}
+                        >
+                          💰 اقتصادي جداً
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsQuickFilter(prev => !prev)}
+                          className={`min-h-[36px] px-2.5 py-1 rounded-xl font-bold transition whitespace-nowrap ${
+                            isQuickFilter ? 'bg-[#1E5631] text-white' : 'bg-white border border-gray-200 text-gray-700'
+                          }`}
+                        >
+                          ⚡ وجبات سريعة
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUsesLeftoversFilter(prev => !prev)}
+                          className={`min-h-[36px] px-2.5 py-1 rounded-xl font-bold transition whitespace-nowrap ${
+                            usesLeftoversFilter ? 'bg-[#1E5631] text-white' : 'bg-white border border-gray-200 text-gray-700'
+                          }`}
+                        >
+                          ♻️ استغلال بواقي الأكل
+                        </button>
+                      </div>
+
+                      {(() => {
+                        const normalizedQuery = offlineRecipeQuery.trim().toLocaleLowerCase('ar');
+                        const filteredLibraryRecipes = matchedRecipes.filter(({ recipe }) =>
+                          !normalizedQuery || recipe.name.toLocaleLowerCase('ar').includes(normalizedQuery)
+                        );
+                        return (
+                          <>
+                            <div className="flex items-center justify-between text-[11px] text-gray-500">
+                              <span>عدد الوصفات: {filteredLibraryRecipes.length}</span>
+                              {(isSavedRecipesFilter || mealFilter !== 'all' || isZeroMissingOnly || isVeryBudgetFilter || isQuickFilter || usesLeftoversFilter || normalizedQuery) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsSavedRecipesFilter(false);
+                                    setMealFilter('all');
+                                    setIsZeroMissingOnly(false);
+                                    setIsVeryBudgetFilter(false);
+                                    setIsQuickFilter(false);
+                                    setUsesLeftoversFilter(false);
+                                    setOfflineRecipeQuery('');
+                                  }}
+                                  className="font-bold text-[#1E5631] hover:underline"
+                                >
+                                  إظهار الكل
+                                </button>
+                              )}
+                            </div>
+                            <div className="space-y-2">
+                              {filteredLibraryRecipes.map(({ recipe, scaledCost, availableCount, totalCount }) => {
+                                const isSaved = savedRecipeIds.includes(recipe.id);
+                                return (
+                                  <div key={recipe.id} className="flex w-full items-center gap-2 rounded-2xl border border-gray-200 bg-white p-2.5 shadow-sm transition hover:border-emerald-300">
+                                    <button type="button" onClick={() => setSelectedRecipeModal(recipe)} className="flex min-w-0 flex-1 items-center gap-3 text-right">
+                                      <span className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-[#F1F5EC]">
+                                        {recipe.imageUrl && !brokenImages[recipe.id] ? <img src={recipe.imageUrl} alt={recipe.name} loading="lazy" onError={() => handleImageError(recipe.id)} className="h-full w-full object-cover" /> : <SvgIllustration type={recipe.svgFallbackIcon || 'koshari'} />}
+                                      </span>
+                                      <span className="min-w-0 flex-1">
+                                        <strong className="block truncate text-sm text-gray-900">{recipe.name}</strong>
+                                        <span className="mt-1 block text-[10px] text-gray-500">{recipe.mealType === 'breakfast' ? 'فطار' : recipe.mealType === 'lunch' ? 'غداء' : 'عشاء'} · {recipe.prepTimeMinutes} دقيقة · لـ {familySize} أفراد</span>
+                                        <span className="mt-0.5 block text-[10px] font-semibold text-[#1E5631]">
+                                          ~{scaledCost} ج.م · متوفر {availableCount} من {totalCount}
+                                        </span>
+                                      </span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleSaveRecipe(recipe.id)}
+                                      aria-label={isSaved ? 'إزالة من المحفوظات' : 'حفظ الوصفة'}
+                                      title={isSaved ? 'إزالة من المحفوظات' : 'حفظ الوصفة'}
+                                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition ${
+                                        isSaved
+                                          ? 'border-[#D8C69A] bg-[#F7F0DE] text-[#765B3A]'
+                                          : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      <Bookmark className={`h-4 w-4 ${isSaved ? 'fill-[#765B3A]' : ''}`} />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                              {filteredLibraryRecipes.length === 0 && (
+                                <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-center text-xs text-gray-500">
+                                  {isSavedRecipesFilter
+                                    ? 'لسه مفيش وصفات محفوظة. اضغطي على علامة الحفظ بجانب أي وصفة للرجوع لها بدون نت.'
+                                    : 'ملقيناش وصفة مطابقة للفلاتر الحالية. جرّبي تغيير البحث أو إظهار الكل.'}
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </section>
                   ) : (
                     <>
-                  <button type="button" onClick={() => setKitchenView('offline')} className="flex w-full items-center justify-between rounded-2xl border border-[#DCE5D3] bg-[#F1F5EC] p-3 text-right transition hover:bg-[#E8EFE1]">
-                    <span className="flex items-center gap-2">
-                      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#526748]"><BookOpen className="h-5 w-5" /></span>
-                      <span><strong className="block text-xs text-[#40533A]">مكتبة الوصفات</strong><small className="mt-0.5 block text-[10px] text-[#68745F]">وصفات مجانية جاهزة داخل التطبيق</small></span>
-                    </span>
-                    <ChevronRight className="h-4 w-4 text-[#526748]" />
-                  </button>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => { setIsSavedRecipesFilter(false); setKitchenView('offline'); }}
+                      className="flex w-full items-center justify-between rounded-2xl border border-[#DCE5D3] bg-[#F1F5EC] p-3 text-right transition hover:bg-[#E8EFE1]"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#526748]"><BookOpen className="h-5 w-5" /></span>
+                        <span><strong className="block text-xs text-[#40533A]">مكتبة الوصفات</strong><small className="mt-0.5 block text-[10px] text-[#68745F]">وصفات مجانية جاهزة داخل التطبيق</small></span>
+                      </span>
+                      <ChevronRight className="h-4 w-4 text-[#526748]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setIsSavedRecipesFilter(true); setKitchenView('offline'); }}
+                      className="flex w-full items-center justify-between rounded-2xl border border-[#E6D9B8] bg-[#FAF5E8] p-3 text-right transition hover:bg-[#F3EBD6]"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#765B3A]"><Bookmark className="h-5 w-5" /></span>
+                        <span><strong className="block text-xs text-[#5E482C]">الوجبات المحفوظة ({savedRecipeIds.length})</strong><small className="mt-0.5 block text-[10px] text-[#7D6A4E]">وصفاتك المفضلة بدون إنترنت</small></span>
+                      </span>
+                      <ChevronRight className="h-4 w-4 text-[#765B3A]" />
+                    </button>
+                  </div>
                   <button type="button" onClick={() => setKitchenView('online')} className="flex w-full items-center justify-between rounded-2xl border border-[#DCE2D0] bg-[#F1F3EA] p-3 text-right transition hover:bg-[#E8EBDD]">
                     <span className="flex items-center gap-2">
                       <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#78815B]"><Mic className="h-5 w-5" /></span>
@@ -2120,7 +2366,7 @@ export default function App() {
                   <div className="bg-[#626B49] text-white p-3 rounded-2xl shadow-sm flex items-center justify-between">
                     <div>
                       <span className="text-xs font-black text-[#D8C69A] block">تدبيرة — كل جنيه ليه قيمة 💛</span>
-                      <span className="text-[10px] text-blue-100">تكلفة الوجبة التقديرية ومقادير الأكل حسب عدد أفراد بيتك 🇪🇬</span>
+                      <span className="text-[10px] text-[#F4EAD5]">تكلفة الوجبة التقديرية ومقادير الأكل حسب عدد أفراد بيتك 🇪🇬</span>
                     </div>
                     <span className="text-xs bg-[#D8C69A] text-[#626B49] font-black px-2 py-0.5 rounded-lg">ج.م EGP</span>
                   </div>
@@ -2145,7 +2391,7 @@ export default function App() {
                       <span className="w-8 text-center font-extrabold text-[#626B49] text-sm">{familySize}</span>
                       <button
                         onClick={() => setFamilySize(prev => prev + 1)}
-                        className="w-7 h-7 rounded-lg bg-[#626B49] hover:bg-[#002171] text-white font-black text-sm flex items-center justify-center transition"
+                        className="w-7 h-7 rounded-lg bg-[#626B49] hover:bg-[#1E5631] text-white font-black text-sm flex items-center justify-center transition"
                       >
                         +
                       </button>
@@ -2214,7 +2460,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={handleRequestRewardedAd}
-                          className="w-full bg-[#626B49] hover:bg-[#002171] text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm"
+                          className="w-full bg-[#626B49] hover:bg-[#1E5631] text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm"
                         >
                           <Play className="w-3.5 h-3.5 text-[#D8C69A] fill-[#D8C69A]" />
                           <span>شاهد إعلاناً قصيراً لفتح جدول وجبات الأسبوع</span>
@@ -2337,45 +2583,6 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* Meal Category Filters & Zero Missing Toggle */}
-                  <div className="flex gap-1.5 overflow-x-auto pb-1 text-xs items-center">
-                    {[
-                      { key: 'all', label: 'الكل 🍽️' },
-                      { key: 'breakfast', label: 'فطار 🍳' },
-                      { key: 'lunch', label: 'غداء 🍲' },
-                      { key: 'dinner', label: 'عشاء 🌙' }
-                    ].map(cat => (
-                      <button
-                        key={cat.key}
-                        onClick={() => setMealFilter(cat.key as MealTypeFilter)}
-                        className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition ${
-                          mealFilter === cat.key
-                            ? 'bg-[#626B49] text-white shadow-sm'
-                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
-                        }`}
-                      >
-                        {cat.label}
-                      </button>
-                    ))}
-
-                    <div className="h-5 w-px bg-gray-200 mx-0.5 shrink-0" />
-
-                    {/* Feature 2: Zero-Missing-Ingredients Recipe Filter */}
-                    <button
-                      onClick={() => setIsZeroMissingOnly(!isZeroMissingOnly)}
-                      className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition flex items-center gap-1.5 shrink-0 ${
-                        isZeroMissingOnly
-                          ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-300'
-                          : 'bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-50'
-                      }`}
-                      title="إظهار فقط الوجبات الجاهزة بنسبة 100% دون أي مكونات ناقصة"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>اطبخ باللي عندي فقط</span>
-                      {isZeroMissingOnly && <Check className="w-3 h-3" />}
-                    </button>
-                  </div>
-
                   {/* Ingredients Drawer */}
                   <div className="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm">
                     <div className="flex items-center justify-between mb-2 gap-2">
@@ -2475,37 +2682,11 @@ export default function App() {
                       })}
                     </div>
 
-                    <React.Suspense fallback={<div className="rounded-xl bg-white border border-gray-100 p-3 text-center text-[11px] text-gray-500">بنجهز اقتراحات الوجبات…</div>}>
-                      <IngredientRecipeFinder availableIngredients={selectedIngredients} familySize={familySize} />
-                    </React.Suspense>
-
-                    {/* Quick Filters */}
-                    <div className="flex flex-wrap gap-2 pt-3 mt-3 border-t border-gray-100 text-[11px]">
-                      <button
-                        onClick={() => setIsVeryBudgetFilter(!isVeryBudgetFilter)}
-                        className={`px-2 py-0.5 rounded-md font-semibold transition ${
-                          isVeryBudgetFilter ? 'bg-[#D8C69A] text-[#626B49]' : 'bg-gray-50 text-gray-600'
-                        }`}
-                      >
-                        💰 اقتصادي جداً
-                      </button>
-                      <button
-                        onClick={() => setIsQuickFilter(!isQuickFilter)}
-                        className={`px-2 py-0.5 rounded-md font-semibold transition ${
-                          isQuickFilter ? 'bg-[#D8C69A] text-[#626B49]' : 'bg-gray-50 text-gray-600'
-                        }`}
-                      >
-                        ⚡ وجبات سريعة
-                      </button>
-                      <button
-                        onClick={() => setUsesLeftoversFilter(!usesLeftoversFilter)}
-                        className={`px-2 py-0.5 rounded-md font-semibold transition ${
-                          usesLeftoversFilter ? 'bg-[#D8C69A] text-[#626B49]' : 'bg-gray-50 text-gray-600'
-                        }`}
-                      >
-                        ♻️ استغلال بواقي الأكل
-                      </button>
-                    </div>
+                    <ErrorBoundary fallbackTitle="تعذر تحميل مكتبة الاقتراحات الذكية">
+                      <React.Suspense fallback={<div className="rounded-xl bg-white border border-gray-100 p-3 text-center text-[11px] text-gray-500">بنجهز اقتراحات الوجبات…</div>}>
+                        <IngredientRecipeFinder availableIngredients={selectedIngredients} familySize={familySize} />
+                      </React.Suspense>
+                    </ErrorBoundary>
                   </div>
 
                   {/* Add Custom Recipe Button */}
@@ -2532,7 +2713,7 @@ export default function App() {
               {activeTab === 'budget' && (
                 <div className="space-y-4">
                   {/* Core Brand Identity Hero Banner */}
-                  <div className="bg-gradient-to-r from-[#626B49] via-[#1565C0] to-[#626B49] text-white p-3.5 rounded-2xl shadow-sm border-b-2 border-[#D8C69A] space-y-1">
+                  <div className="bg-gradient-to-r from-[#626B49] via-[#4D5538] to-[#626B49] text-white p-3.5 rounded-2xl shadow-sm border-b-2 border-[#D8C69A] space-y-1">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-lg">💛</span>
@@ -2542,7 +2723,7 @@ export default function App() {
                         ميزانية البيت 🇪🇬
                       </span>
                     </div>
-                    <p className="text-xs text-blue-100 font-medium">
+                    <p className="text-xs text-[#F4EAD5] font-medium">
                       وفّر بذكاء، ودبّر بيتك، وخلي كل جنيه في مكانه.
                     </p>
                   </div>
@@ -2555,14 +2736,14 @@ export default function App() {
                       setExpenseDesc('');
                       setIsAddExpenseModalOpen(true);
                     }}
-                    className="w-full bg-[#626B49] hover:bg-[#002171] text-white font-extrabold py-3 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md transition"
+                    className="w-full bg-[#626B49] hover:bg-[#1E5631] text-white font-extrabold py-3 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md transition"
                   >
                     <Plus className="w-4 h-4 text-[#D8C69A]" />
                     <span>⚡ تسجيل مصروف فوري</span>
                   </button>
 
                   {/* Smart Financial Advisor Banner */}
-                  <div className="bg-gradient-to-r from-amber-50 via-[#78815B]50 to-emerald-50 p-3.5 rounded-2xl border border-[#E6D9B8]/80 shadow-sm space-y-1.5">
+                  <div className="bg-gradient-to-r from-amber-50 via-[#F5F7F0] to-emerald-50 p-3.5 rounded-2xl border border-[#E6D9B8]/80 shadow-sm space-y-1.5">
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-xl bg-[#EFE5C8] text-amber-800 flex items-center justify-center shrink-0">
                         <Lightbulb className="w-4 h-4" />
@@ -2590,14 +2771,14 @@ export default function App() {
                   </div>
 
                   {/* Feature 3: Monthly Payday Cycle & Countdown Widget */}
-                  <div className="bg-gradient-to-l from-[#78815B]900 to-[#626B49] text-white p-3.5 rounded-2xl shadow-sm space-y-2.5">
+                  <div className="bg-gradient-to-l from-[#4D5538] to-[#626B49] text-white p-3.5 rounded-2xl shadow-sm space-y-2.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-xl bg-white/10 backdrop-blur-xs flex items-center justify-center text-[#D8C69A]">
                           <Calendar className="w-4 h-4" />
                         </div>
                         <div>
-                          <span className="text-[10px] text-blue-200 block font-medium">دورة الراتب الشهري</span>
+                          <span className="text-[10px] text-[#F4EAD5] block font-medium">دورة الراتب الشهري</span>
                           <span className="text-xs font-extrabold text-white">
                             {paydayAnalytics.isConfigured ? (
                               paydayAnalytics.isToday ? (
@@ -2628,12 +2809,12 @@ export default function App() {
                     {paydayAnalytics.isConfigured ? (
                       <div className="pt-2 border-t border-white/15 flex items-center justify-between text-xs">
                         <div>
-                          <span className="text-[10px] text-blue-200 block">الحد المقترح للصرف اليومي:</span>
+                          <span className="text-[10px] text-[#F4EAD5] block">الحد المقترح للصرف اليومي:</span>
                           {!paydayAnalytics.isBudgetExhausted && paydayAnalytics.dailyCap !== null ? (
                             <div className="flex items-baseline gap-1">
                               <span className="text-base font-black text-[#D8C69A]">~{paydayAnalytics.dailyCap}</span>
                               <span className="text-[10px] text-white">ج.م/يوم</span>
-                              <span className="text-[10px] text-blue-200 mr-1 font-normal">
+                              <span className="text-[10px] text-white/90 mr-1 font-normal">
                                 ({paydayAnalytics.daysRemaining > 0 ? `على مدار ${paydayAnalytics.daysRemaining} يوم` : 'اليوم'})
                               </span>
                             </div>
@@ -2645,7 +2826,7 @@ export default function App() {
                         </div>
 
                         <div className="text-left">
-                          <span className="text-[10px] text-blue-200 block">الموعد المحدد:</span>
+                          <span className="text-[10px] text-[#F4EAD5] block">الموعد المحدد:</span>
                           <span className="text-xs font-bold text-white">
                             {paydayAnalytics.effectivePayday} في الشهر
                           </span>
@@ -2653,7 +2834,7 @@ export default function App() {
                       </div>
                     ) : (
                       <div className="pt-2 border-t border-white/15 flex items-center justify-between text-xs">
-                        <p className="text-[11px] text-blue-100 leading-tight">
+                        <p className="text-[11px] text-[#F4EAD5] leading-tight">
                           اختر يوم نزول الراتب لحساب الأيام المتبقية تلقائياً وتحديد حد الصرف اليومي الذكي.
                         </p>
                         <button
@@ -2829,7 +3010,7 @@ export default function App() {
                                   }
                                 }}
                                 className={`p-1.5 rounded-lg text-right transition flex items-center justify-between ${
-                                  isSelected ? 'bg-[#F1F3EA] border border-blue-300' : 'hover:bg-gray-50'
+                                  isSelected ? 'bg-[#F1F3EA] border border-[#A7B28E]' : 'hover:bg-gray-50'
                                 } ${cat.spent === 0 ? 'opacity-50 cursor-default' : 'cursor-pointer'}`}
                               >
                                 <div className="flex items-center gap-1.5 truncate">
@@ -2935,7 +3116,7 @@ export default function App() {
                                 analytics.colorStatus === 'red'
                                   ? 'bg-rose-500'
                                   : analytics.colorStatus === 'amber'
-                                  ? 'bg-[#F7F0DE]0'
+                                  ? 'bg-[#D97706]'
                                   : 'bg-emerald-500'
                               }`}
                               style={{ width: `${analytics.visualPercentage}%` }}
@@ -2993,7 +3174,7 @@ export default function App() {
 
                     <button
                       onClick={handleSaveBudgetPlan}
-                      className="w-full bg-[#626B49] hover:bg-[#002171] text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow transition"
+                      className="w-full bg-[#626B49] hover:bg-[#1E5631] text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow transition"
                     >
                       <Bookmark className="w-4 h-4 text-[#FFE54C]" />
                       <span>حفظ خطة الميزانية في المحفوظات</span>
@@ -3016,7 +3197,7 @@ export default function App() {
                         </button>
                         <button
                         onClick={() => setIsAddExpenseModalOpen(true)}
-                        className="bg-[#626B49] hover:bg-[#002171] text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-sm transition"
+                        className="bg-[#626B49] hover:bg-[#1E5631] text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-sm transition"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>تسجيل مصروف</span>
@@ -3060,19 +3241,102 @@ export default function App() {
                       </div>
                     )}
                   </div>
+
+                  {/* Extra Income Records (Preserved from legacy household finance) */}
+                  {extraIncomeRecords.length > 0 && (
+                    <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-extrabold text-xs text-[#1E5631]">سجل الدخل الإضافي ({extraIncomeRecords.length})</h3>
+                        <span className="text-[10px] text-gray-400">بيانات محفوظة من سجل البيت</span>
+                      </div>
+                      <div className="space-y-2">
+                        {extraIncomeRecords.map(inc => (
+                          <div key={inc.id} className="p-2.5 rounded-xl border border-emerald-100 bg-emerald-50/60 flex items-center justify-between text-xs">
+                            <div className="flex-1">
+                              <span className="font-bold text-gray-800 block">{inc.description || inc.categoryId}</span>
+                              <span className="text-[10px] text-gray-500">{inc.date} · {inc.categoryId}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-black text-[#1E5631]">+{inc.amount} ج.م</span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteExtraIncome(inc.id)}
+                                className="text-gray-400 hover:text-red-600 p-1"
+                                title="حذف"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Saved Budget Plans (Consolidated into الميزانية) */}
+                  <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-extrabold text-xs text-gray-900">الميزانيات المحفوظة ({savedBudgets.length})</h3>
+                        <span className="text-[10px] text-gray-400">خطط التقسيم اللي حفظتيها للرجوع لها بدون نت</span>
+                      </div>
+                    </div>
+                    {savedBudgets.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-gray-500 border border-dashed border-gray-200 rounded-xl">
+                        لسه مفيش خطط ميزانية محفوظة. بعد تعديل النسب بالأعلى، اضغطي "حفظ خطة الميزانية" لتظهر هنا.
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {savedBudgets.map(b => (
+                          <div key={b.id} className="p-3.5 rounded-2xl border border-[#E4DECF] bg-[#FFFDF8] space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="font-bold text-sm text-[#1E5631]">{b.categoryTitle}</h4>
+                                <span className="text-xs font-extrabold text-gray-800">{b.totalAmount} جنيه مصري</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setSavedBudgets(prev => prev.filter(x => x.id !== b.id))}
+                                className="text-red-500 hover:text-red-700 p-1.5"
+                                title="حذف الخطة"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                            <div className="text-xs space-y-1 pt-1 border-t border-gray-100">
+                              {b.slices.map((s, idx) => (
+                                <div key={idx} className="flex justify-between text-gray-600">
+                                  <span>{s.name} ({s.percentage}%)</span>
+                                  <span className="font-bold text-gray-800">{Math.round(s.amount)} ج.م</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
               {/* ======================================================== */}
-              {/* === TAB 3: تدبيرة اليوم === */}
+              {/* === TAB 3: تدبيرة اليوم (تحت الرئيسية) === */}
               {/* ======================================================== */}
               {activeTab === 'daily' && (
                 <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('home')}
+                      className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 min-h-[40px]"
+                    >
+                      <ChevronRight className="h-4 w-4" /> رجوع للرئيسية
+                    </button>
+                    <span className="text-xs bg-[#D8C69A] text-[#626B49] font-black px-2.5 py-1 rounded-full">كل جنيه ليه قيمة 💛</span>
+                  </div>
+
                   <div>
-                    <div className="flex items-center gap-1.5">
-                      <h2 className="text-lg font-extrabold text-[#626B49]">تدبيرة اليوم 💡</h2>
-                      <span className="text-xs bg-[#D8C69A] text-[#626B49] font-black px-2 py-0.5 rounded-full">كل جنيه ليه قيمة 💛</span>
-                    </div>
+                    <h2 className="text-lg font-extrabold text-[#626B49]">تدبيرة اليوم 💡</h2>
                     <p className="text-xs text-gray-500 mt-0.5">
                       وفّر بذكاء، ودبّر بيتك، وخلي كل جنيه في مكانه مع حيل يومية مجربة.
                     </p>
@@ -3343,35 +3607,18 @@ export default function App() {
               )}
 
               {/* ======================================================== */}
-              {/* === TAB 4: المحفوظات وقائمة المشتريات === */}
+              {/* === TAB 4: التسوق وقائمة النواقص === */}
               {/* ======================================================== */}
               {activeTab === 'saved' && (
                 <div className="space-y-4">
                   <div>
-                    <h2 className="text-lg font-extrabold text-[#626B49]">المحفوظات وقائمة النواقص 📋</h2>
+                    <h2 className="text-lg font-extrabold text-[#1E5631]">التسوق وقائمة النواقص 🛒</h2>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      طلبات السوق والوجبات والنصائح والميزانيات المحفوظة بدون إنترنت.
+                      طلبات السوق والنواقص المحفوظة بدون إنترنت مع روابط مباشرة لمتاجر السوبرماركت.
                     </p>
                   </div>
 
-                  {/* Scrollable saved-section navigation with larger mobile tap targets. */}
-                  <div className="flex gap-1.5 overflow-x-auto rounded-xl border border-[#E8E0D1] bg-[#F7F3EA] p-1.5 text-[11px] font-bold whitespace-nowrap" role="group" aria-label="أقسام المحفوظات">
-                    {([
-                      { id: 'shopping', label: 'النواقص (' + shoppingItems.length + ')' },
-                      { id: 'recipes', label: 'الوجبات (' + savedRecipeIds.length + ')' },
-                      { id: 'tips', label: 'النصائح (' + savedTipIds.length + ')' },
-                      { id: 'budgets', label: 'الميزانيات (' + savedBudgets.length + ')' },
-                      { id: 'household', label: 'إدارة البيت' }
-                    ] as const).map(({ id, label }) => (
-                      <button key={id} type="button" aria-pressed={savedSubTab === id} onClick={() => setSavedSubTab(id)}
-                        className={savedSubTab === id ? "min-h-10 shrink-0 rounded-lg bg-[#667B58] px-3 text-white shadow-sm" : "min-h-10 shrink-0 rounded-lg px-3 text-[#716E62] hover:bg-white"}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* SubTab 1: Reliable, Transparent Shopping List Interface (No NaN Ever) */}
-                  {savedSubTab === 'shopping' && (
+                  {/* Reliable, Transparent Shopping List Interface (No NaN Ever) */}
                     <div className="space-y-3">
                       {/* Financial Grand Total Banner */}
                       <div className="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm space-y-2.5">
@@ -3382,88 +3629,54 @@ export default function App() {
                         {/* Feature 1: WhatsApp Sharing Action */}
                         <button
                           onClick={handleShareShoppingWhatsApp}
-                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition"
+                          className="w-full min-h-[44px] bg-[#1E5631] hover:bg-[#2E7D32] text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
                           title="مشاركة الأصناف غير المشتراة عبر تطبيق واتساب"
                         >
                           <Share2 className="w-4 h-4" />
                           <span>مشاركة قائمة النواقص عبر واتساب</span>
                         </button>
 
-                        {/* Phase 4E: Smart Deals & Affiliate Widget */}
-                        <div className="bg-gradient-to-br from-[#78815B]50 to-amber-50/50 p-3.5 rounded-2xl border border-[#DCE2D0] shadow-sm space-y-2.5">
-                          <div className="flex items-center justify-between border-b border-[#E4DECF] pb-2">
+                        {/* Direct Store / Grocery Quick-Links */}
+                        <div className="bg-[#F5F0E5]/90 p-3.5 rounded-2xl border border-[#E4DECF] shadow-sm space-y-3">
+                          <div className="border-b border-[#E4DECF] pb-2.5">
                             <div className="flex items-center gap-1.5">
-                              <Sparkles className="w-4 h-4 text-[#D8C69A]" />
-                              <h3 className="text-xs font-extrabold text-[#626B49]">🛒 عروض وتخفيضات متاحة على طلباتك</h3>
+                              <ShoppingCart className="w-4 h-4 text-[#1E5631] shrink-0" />
+                              <h3 className="text-xs font-extrabold text-[#1E5631]">🛒 اطلب نواقصك من المتجر</h3>
                             </div>
-                            <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded-full">
-                              خصومات مصرية معتمدة ✓
-                            </span>
+                            <p className="mt-1 text-[11px] text-[#5C5548] leading-relaxed">
+                              {shoppingItems.some(i => !i.isChecked)
+                                ? `عندك ${shoppingItems.filter(i => !i.isChecked).length} أصناف ناقصة — افتح قسم السوبرماركت في المتجر مباشرة لطلبها بسهولة.`
+                                : 'روابط مباشرة لأشهر متاجر السوبرماركت والبقالة في مصر لتصفح العروض اليومية.'}
+                            </p>
                           </div>
 
-                          <div className="space-y-2">
-                            {matchDealsForShoppingItems(shoppingItems.length).map(deal => (
-                              <div key={deal.id} className="bg-white p-2.5 rounded-xl border border-gray-200 shadow-xs space-y-1.5">
-                                <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-2.5">
+                            {matchDealsForShoppingItems(shoppingItems.length).map(deal => {
+                              const hasMissing = shoppingItems.some(i => !i.isChecked);
+                              return (
+                                <div key={deal.id} className="bg-white p-3 rounded-xl border border-[#E6DFCE] shadow-xs space-y-2.5">
                                   <div>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="font-extrabold text-xs text-gray-900">{deal.partnerName}</span>
-                                      {deal.verificationStatus === 'verified' && (
-                                        <span className="text-[9px] bg-[#E8EBDD] text-[#626B49] font-bold px-1.5 py-0.2 rounded">
-                                          مؤكد ✓
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-[11px] text-gray-600 mt-0.5 leading-relaxed">{deal.description}</p>
+                                    <span className="block font-extrabold text-xs text-gray-900">{deal.partnerName}</span>
+                                    <p className="text-[11px] text-[#5C5548] mt-1 leading-relaxed">{deal.description}</p>
                                   </div>
-                                  {deal.couponCode && (
-                                    <div className="bg-[#F7F0DE] border border-[#E6D9B8] px-2 py-1 rounded-xl text-center shrink-0">
-                                      <span className="text-[9px] text-amber-800 block">كود الخصم:</span>
-                                      <span className="font-mono font-bold text-xs text-amber-950">{deal.couponCode}</span>
-                                    </div>
-                                  )}
-                                </div>
 
-                                {deal.conditions && (
-                                  <p className="text-[10px] text-gray-500 bg-gray-50 p-1.5 rounded-lg">
-                                    ℹ️ {deal.conditions}
-                                  </p>
-                                )}
-
-                                <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
-                                  {deal.couponCode && (
-                                    <button
-                                      onClick={() => {
-                                        try {
-                                          navigator.clipboard.writeText(deal.couponCode!);
-                                          showToast(`تم نسخ كود الخصم (${deal.couponCode}) بنجاح 📋`);
-                                        } catch {
-                                          showToast(`كود الخصم: ${deal.couponCode} (انسخه يدوياً)`);
-                                        }
-                                      }}
-                                      className="flex-1 bg-[#F7F0DE]0 hover:bg-amber-600 text-white font-bold py-1.5 px-2.5 rounded-xl text-[11px] flex items-center justify-center gap-1 transition shadow-sm"
-                                    >
-                                      <Copy className="w-3.5 h-3.5" />
-                                      <span>نسخ الكود</span>
-                                    </button>
-                                  )}
                                   <a
                                     href={deal.affiliateTrackingUrl || deal.officialUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="flex-1 bg-[#626B49] hover:bg-[#002171] text-white font-bold py-1.5 px-2.5 rounded-xl text-[11px] flex items-center justify-center gap-1 transition shadow-sm text-center"
+                                    className="w-full min-h-[44px] bg-[#1E5631] hover:bg-[#2E7D32] text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
                                   >
-                                    <span>شراء النواقص مع كود الخصم</span>
-                                    <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+                                    <span>{hasMissing ? `اطلب النواقص من ${deal.shortName}` : `تصفح عروض ${deal.shortName}`}</span>
+                                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                                   </a>
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
 
-                          <div className="pt-1 text-center">
-                            <p className="text-[10px] text-gray-500 leading-relaxed">
-                              "قد يحصل تطبيق تدبيرة على عمولة بسيطة عند الشراء لدعم استمرار التطوير المجاني"
+                          <div className="pt-0.5 text-center">
+                            <p className="text-[10px] text-[#6E675A] leading-relaxed">
+                              روابط مباشرة للمواقع الرسمية للمتاجر — قد يحصل تطبيق تدبيرة على عمولة بسيطة لدعم استمرار التطوير المجاني.
                             </p>
                           </div>
                         </div>
@@ -3477,7 +3690,7 @@ export default function App() {
                               setNewItemUnitPrice('');
                               setIsAddItemModalOpen(true);
                             }}
-                            className="bg-[#626B49] hover:bg-[#002171] text-white px-3 py-1.5 rounded-xl font-bold flex items-center gap-1 shadow-sm transition"
+                            className="min-h-[40px] bg-[#1E5631] hover:bg-[#2E7D32] text-white px-3.5 py-2 rounded-xl font-bold flex items-center gap-1 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
                           >
                             <Plus className="w-3.5 h-3.5" />
                             <span>إضافة طلب جديد</span>
@@ -3637,191 +3850,6 @@ export default function App() {
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {/* SubTab 2: Saved Recipes */}
-                  {savedSubTab === 'recipes' && (
-                    <div className="space-y-3">
-                      {savedRecipeIds.length === 0 ? (
-                        <div className="bg-white p-8 rounded-3xl text-center border border-dashed border-gray-300 space-y-2">
-                          <div className="w-12 h-12 bg-[#F7F0DE] text-[#D8C69A] rounded-full mx-auto flex items-center justify-center">
-                            <Bookmark className="w-6 h-6" />
-                          </div>
-                          <p className="text-sm font-extrabold text-gray-800">
-                            لسه مفيش عناصر محفوظة.. احفظ اللي يعجبك وارجع له وقت ما تحتاجه.
-                          </p>
-                          <p className="text-xs text-gray-500 leading-relaxed">
-                            اضغط على علامة الحفظ ⭐ في أي وجبة بتعجبك في تدبيرة الأكل للرجوع إليها بدون نت.
-                          </p>
-                        </div>
-                      ) : (
-                        RECIPES.filter(r => savedRecipeIds.includes(r.id)).map(r => (
-                          <div key={r.id} className="bg-white p-3 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
-                            <div onClick={() => setSelectedRecipeModal(r)} className="cursor-pointer flex-1">
-                              <h4 className="font-bold text-sm text-gray-900">{r.name}</h4>
-                              <p className="text-xs text-gray-500 mt-0.5">
-                                ⏱️ {r.prepTimeMinutes} دقيقة • <span className="text-[#626B49] font-bold">🏷️ تكلفة تقديرية: ~{getScaledCost(r)} ج.م ({familySize} أفراد)</span>
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => toggleSaveRecipe(r.id)}
-                              className="text-red-500 hover:text-red-700 p-1.5"
-                              title="حذف من المحفوظات"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-
-                  {/* SubTab 3: Saved Tips */}
-                  {/* SubTab 3: Saved Tips ("أفكاري المحفوظة") */}
-                  {savedSubTab === 'tips' && (
-                    <div className="space-y-3">
-                      {savedTipIds.length === 0 ? (
-                        <div className="bg-white p-8 rounded-3xl text-center border border-dashed border-gray-300 space-y-3">
-                          <div className="w-12 h-12 bg-[#F1F3EA] text-[#626B49] rounded-2xl mx-auto flex items-center justify-center text-xl shadow-inner">
-                            🔖
-                          </div>
-                          <p className="text-sm font-extrabold text-gray-800">
-                            لسه مفيش حيل محفوظة. احفظ أي تدبيرة عجبتك علشان ترجع لها وقت ما تحتاجها.
-                          </p>
-                          <p className="text-xs text-gray-500 leading-relaxed">
-                            تصفح قسم تدبيرة اليوم واضغط على أيقونة الحفظ لجمع أفكار التوفير المفضلة لبيتك هنا بدون إنترنت.
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => setActiveTab('daily')}
-                            className="text-xs font-bold text-white bg-[#626B49] hover:bg-[#002171] px-4 py-2 rounded-xl transition inline-flex items-center gap-1.5 shadow-sm"
-                          >
-                            <span>تصفح تدبيرة اليوم 💡</span>
-                          </button>
-                        </div>
-                      ) : (
-                        DAILY_IDEAS.filter(idea => savedTipIds.includes(idea.id)).map(idea => {
-                          const isTried = triedTipIds.includes(idea.id);
-                          return (
-                            <div key={idea.id} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-2.5">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] bg-[#F1F3EA] text-[#626B49] px-2 py-0.5 rounded font-bold">
-                                    {idea.category}
-                                  </span>
-                                  {isTried && (
-                                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-0.5">
-                                      <Check className="w-2.5 h-2.5 text-emerald-600" />
-                                      <span>مُجربة</span>
-                                    </span>
-                                  )}
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleSaveTip(idea.id)}
-                                  className="text-red-500 hover:text-red-700 p-1 text-xs font-bold flex items-center gap-1"
-                                  title="إزالة من أفكاري المحفوظة"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  <span className="text-[11px]">إزالة</span>
-                                </button>
-                              </div>
-
-                              <div>
-                                <h4 className="font-bold text-sm text-gray-900">{idea.title}</h4>
-                                <p className="text-xs text-gray-600 leading-relaxed mt-1">{idea.description}</p>
-                              </div>
-
-                              <div className="bg-[#F1F3EA]/70 p-2 rounded-xl text-[11px] text-[#626B49] flex items-center gap-1.5">
-                                <span>💡</span>
-                                <span className="font-medium">{idea.practicalTip}</span>
-                              </div>
-
-                              {/* Tags */}
-                              <div className="flex flex-wrap gap-1 text-[10px] text-gray-500">
-                                {idea.tags.map((tag, tIdx) => (
-                                  <span key={tIdx} className="bg-gray-100 px-1.5 py-0.2 rounded text-gray-600">
-                                    #{tag}
-                                  </span>
-                                ))}
-                              </div>
-
-                              <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                                {/* Interactive "جربت الحيلة دي ووفرت" Button sharing same state */}
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleTriedTip(idea.id)}
-                                  className={`text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 transition ${
-                                    isTried
-                                      ? 'bg-emerald-600 text-white shadow-xs'
-                                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                  }`}
-                                >
-                                  {isTried ? <Check className="w-3.5 h-3.5" /> : <Award className="w-3.5 h-3.5" />}
-                                  <span>{isTried ? 'جربتها بالفعل ✓' : 'جربت الحيلة دي ووفرت'}</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleShareTip(idea)}
-                                  className="text-xs font-bold text-[#626B49] hover:bg-[#F1F3EA] px-2.5 py-1.5 rounded-xl border border-gray-200 flex items-center gap-1 transition"
-                                >
-                                  <Share2 className="w-3.5 h-3.5" />
-                                  <span>مشاركة</span>
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  )}
-
-                  {/* SubTab 4: Saved Budgets */}
-                  {savedSubTab === 'budgets' && (
-                    <div className="space-y-3">
-                      {savedBudgets.length === 0 ? (
-                        <div className="bg-white p-8 rounded-3xl text-center border border-dashed border-gray-300 space-y-2">
-                          <div className="w-12 h-12 bg-[#F7F0DE] text-[#D8C69A] rounded-full mx-auto flex items-center justify-center">
-                            <Wallet className="w-6 h-6" />
-                          </div>
-                          <p className="text-sm font-extrabold text-gray-800">
-                            لسه مفيش عناصر محفوظة.. احفظ اللي يعجبك وارجع له وقت ما تحتاجه.
-                          </p>
-                          <p className="text-xs text-gray-500 leading-relaxed">
-                            قسّم ميزانيتك في تدبيرة الفلوس واحفظ خطتك للرجوع إليها في أي وقت.
-                          </p>
-                        </div>
-                      ) : (
-                        savedBudgets.map(b => (
-                          <div key={b.id} className="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm space-y-2">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <h4 className="font-bold text-sm text-[#626B49]">{b.categoryTitle}</h4>
-                                <span className="text-xs font-extrabold text-gray-800">{b.totalAmount} جنيه مصري</span>
-                              </div>
-                              <button
-                                onClick={() => setSavedBudgets(prev => prev.filter(x => x.id !== b.id))}
-                                className="text-red-500 hover:text-red-700 p-1"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                            <div className="text-xs space-y-1 pt-1 border-t border-gray-100">
-                              {b.slices.map((s, idx) => (
-                                <div key={idx} className="flex justify-between text-gray-600">
-                                  <span>{s.name} ({s.percentage}%)</span>
-                                  <span className="font-bold text-gray-800">{Math.round(s.amount)} ج.م</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-
-                  {savedSubTab === 'household' && <HouseholdHub />}
                 </div>
               )}
 
@@ -3831,593 +3859,85 @@ export default function App() {
             {/* GOOGLE ADMOB BANNER (Dedicated Container Above Bottom Nav) */}
             {/* ======================================================== */}
             <div
-              className={`transition-all duration-300 ease-in-out border-t border-gray-200 bg-white ${
+              className={`transition-all duration-300 ease-in-out border-t border-gray-200 bg-white shrink-0 ${
                 adStatus === 'failed' || adStatus === 'disabled'
                   ? 'h-0 py-0 border-transparent opacity-0 overflow-hidden'
                   : 'h-[72px] py-1 px-3 flex flex-col justify-center'
               }`}
             >
-              {/* Policy Header Bar: Clear 'إعلان' Tag & Non-Deceptive Separation */}
-              <div className="flex items-center justify-between text-[10px] pb-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="bg-gray-200 text-gray-700 font-bold px-1.5 py-0.2 rounded text-[9px]">
-                    إعلان
-                  </span>
-                  <span className="text-[10px] text-gray-500 font-medium truncate max-w-[190px]">
-                    {IS_DEV ? 'AdMob Test • 320x50' : 'Google AdMob'}
-                  </span>
+              <div className="w-full max-w-2xl mx-auto">
+                {/* Policy Header Bar: Clear 'إعلان' Tag & Non-Deceptive Separation */}
+                <div className="flex items-center justify-between text-[10px] pb-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="bg-gray-200 text-gray-700 font-bold px-1.5 py-0.2 rounded text-[9px]">
+                      إعلان
+                    </span>
+                    <span className="text-[10px] text-gray-500 font-medium truncate max-w-[190px]">
+                      {IS_DEV ? 'AdMob Test • 320x50' : 'Google AdMob'}
+                    </span>
+                  </div>
+                  {IS_DEV && (
+                    <button
+                      onClick={() => setIsAdControlsOpen(true)}
+                      className="text-[9px] text-[#626B49] font-bold hover:underline"
+                    >
+                      اختبار الحالة ⚙️
+                    </button>
+                  )}
                 </div>
-                {IS_DEV && (
-                  <button
-                    onClick={() => setIsAdControlsOpen(true)}
-                    className="text-[9px] text-[#626B49] font-bold hover:underline"
-                  >
-                    اختبار الحالة ⚙️
-                  </button>
-                )}
-              </div>
 
-              {/* Banner Area (Fixed 50px Height Reservation) */}
-              <div className="h-[50px] w-full rounded-lg overflow-hidden relative">
-                {adStatus === 'loaded' && (
-                  <div className="h-full w-full bg-gradient-to-r from-[#78815B]50 via-amber-50 to-[#626B49]50 border border-[#DCE2D0]/80 rounded-lg flex items-center justify-between px-3 text-xs select-none shadow-inner">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-md bg-[#626B49] text-[#D8C69A] font-black text-[10px] flex items-center justify-center shrink-0">
-                        Ad
+                {/* Banner Area (Fixed 50px Height Reservation) */}
+                <div className="h-[50px] w-full rounded-lg overflow-hidden relative">
+                  {adStatus === 'loaded' && (
+                    <div className="h-full w-full bg-gradient-to-r from-[#F1F5EC] via-amber-50 to-[#EEF1E8] border border-[#DCE2D0]/80 rounded-lg flex items-center justify-between px-3 text-xs select-none shadow-inner">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-md bg-[#626B49] text-[#D8C69A] font-black text-[10px] flex items-center justify-center shrink-0">
+                          Ad
+                        </div>
+                        <div>
+                          <span className="font-extrabold text-[#626B49] block leading-tight text-[11px]">
+                            Google AdMob • Test Ad
+                          </span>
+                          <span className="text-[10px] text-gray-600 block leading-tight">
+                            تدبيرة مصر: وفّر في ميزانية بيتك مع بدائل الأكل الذكية
+                          </span>
+                        </div>
                       </div>
-                      <div>
-                        <span className="font-extrabold text-[#626B49] block leading-tight text-[11px]">
-                          Google AdMob • Test Ad
-                        </span>
-                        <span className="text-[10px] text-gray-600 block leading-tight">
-                          تدبيرة مصر: وفّر في ميزانية بيتك مع بدائل الأكل الذكية
-                        </span>
-                      </div>
+                      <span className="text-[9px] font-bold bg-amber-200/80 text-[#765B3A] px-2 py-0.5 rounded-full shrink-0">
+                        Sample Unit
+                      </span>
                     </div>
-                    <span className="text-[9px] font-bold bg-amber-200/80 text-[#765B3A] px-2 py-0.5 rounded-full shrink-0">
-                      Sample Unit
-                    </span>
-                  </div>
-                )}
+                  )}
 
-                {adStatus === 'loading' && (
-                  <div className="h-full w-full bg-gray-100 border border-dashed border-gray-300 rounded-lg flex items-center justify-center gap-2 px-3 text-xs animate-pulse">
-                    <div className="w-4 h-4 border-2 border-[#626B49] border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-[11px] text-gray-500 font-medium">
-                      جارِ حجز المساحة وتحميل إعلان AdMob...
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <nav className="tadbeera-bottom-nav bg-[#FFFEFA] border-t border-[#E8E0D1] px-1.5 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] grid grid-cols-5 shrink-0 shadow-[0_-5px_20px_rgba(83,75,54,0.06)]" aria-label="التنقل الرئيسي">
-              {([
-                { id: 'home', label: 'الرئيسية', Icon: Home },
-                { id: 'food', label: 'المطبخ', Icon: Utensils },
-                { id: 'saved', label: 'التسوق', Icon: ShoppingCart },
-                { id: 'budget', label: 'الميزانية', Icon: Wallet },
-                { id: 'household', label: 'البيت', Icon: Users }
-              ] as const).map(({ id, label, Icon }) => (
-                <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id || (id === 'home' && activeTab === 'daily') ? 'page' : undefined}
-                  className={activeTab === id || (id === 'home' && activeTab === 'daily') ? "flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[#5F7651] bg-[#EEF1E8] font-extrabold" : "flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[#999487]"}>
-                  <Icon className="w-5 h-5" strokeWidth={activeTab === id || (id === 'home' && activeTab === 'daily') ? 2.5 : 1.9} />
-                  <span className="text-[10px] leading-4">{label}</span>
-                </button>
-              ))}
-            </nav>
-            </div>
-
-          {/* Quick AdMob Simulation Control Bar (Development Only) */}
-          {IS_DEV && (
-            <div className="w-full max-w-md bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-                <span className="text-xs font-extrabold text-[#626B49] flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-[#D8C69A]" />
-                  <span>محاكي إعلانات Google AdMob (اختبار فوري)</span>
-                </span>
-                <span className="text-[10px] text-gray-500 font-medium">Test Mode • SDK v23.0.0</span>
-              </div>
-
-              {/* Banner State Buttons */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] text-gray-700 font-bold">حالة إعلان البانر (320x50):</span>
-                  <span className="text-[10px] text-gray-400">فحص حجز المساحة والانهيار</span>
-                </div>
-                <div className="grid grid-cols-4 gap-1.5 text-xs">
-                  <button
-                    onClick={() => { setAdStatus('loaded'); showToast('تم تفعيل البانر (Loaded 320x50) ✓'); }}
-                    className={`py-1.5 px-1 rounded-xl text-center font-bold transition text-[10px] ${
-                      adStatus === 'loaded' ? 'bg-[#626B49] text-white shadow-sm' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    محمّل (Loaded)
-                  </button>
-                  <button
-                    onClick={() => { setAdStatus('loading'); showToast('محاكاة جارِ التحميل مع حجز المساحة ⏳'); }}
-                    className={`py-1.5 px-1 rounded-xl text-center font-bold transition text-[10px] ${
-                      adStatus === 'loading' ? 'bg-[#F7F0DE]0 text-white animate-pulse shadow-sm' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    تحميل (Reserve)
-                  </button>
-                  <button
-                    onClick={() => { setAdStatus('failed'); showToast('محاكاة فشل التحميل وانهيار الحاوية 📉'); }}
-                    className={`py-1.5 px-1 rounded-xl text-center font-bold transition text-[10px] ${
-                      adStatus === 'failed' ? 'bg-rose-600 text-white shadow-sm' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    فشل (Collapse)
-                  </button>
-                  <button
-                    onClick={() => { setAdStatus('disabled'); showToast('تم تعطيل البانر بالكامل 🚫'); }}
-                    className={`py-1.5 px-1 rounded-xl text-center font-bold transition text-[10px] ${
-                      adStatus === 'disabled' ? 'bg-gray-800 text-white shadow-sm' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    معطل (Hidden)
-                  </button>
-                </div>
-              </div>
-
-              {/* Interstitial Controls */}
-              <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="interstitialToggle"
-                    checked={isInterstitialEnabled}
-                    onChange={(e) => {
-                      setIsInterstitialEnabled(e.target.checked);
-                      showToast(e.target.checked ? 'تم تفعيل الإعلانات البينية تجريبياً ⚡' : 'تم تعطيل الإعلانات البينية (افتراضي) 🛡️');
-                    }}
-                    className="w-4 h-4 text-[#626B49] rounded cursor-pointer"
-                  />
-                  <label htmlFor="interstitialToggle" className="text-[11px] text-gray-700 font-bold cursor-pointer">
-                    الإعلانات البينية {isInterstitialEnabled ? '(مفعلة)' : '(معطلة افتراضياً)'}
-                  </label>
-                </div>
-
-                <button
-                  onClick={triggerTestInterstitial}
-                  className="bg-[#626B49] hover:bg-[#002171] text-white text-[10px] font-bold px-2.5 py-1.5 rounded-xl transition flex items-center gap-1 shadow-sm"
-                >
-                  <span>اختبار إعلان بيني 🎬</span>
-                </button>
-              </div>
-
-              {/* Policy Metrics */}
-              <div className="text-[10px] text-gray-600 bg-gray-50 p-2 rounded-xl flex items-center justify-between border border-gray-100">
-                <span>جلسة الإعلانات البينية: <b className="text-gray-900">{sessionInterstitialCount}/2</b></span>
-                <span>فترة الانتظار (120 ثانية): <b className="text-gray-900">{
-                  Date.now() - lastInterstitialTime >= 120000 ? 'جاهز للعرض ✓' : `${Math.ceil((120000 - (Date.now() - lastInterstitialTime)) / 1000)}ث متبقية`
-                }</b></span>
-              </div>
-
-              {/* Rewarded Ad Controls (Phase 4D) */}
-              <div className="pt-2 border-t border-gray-100 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-gray-700 font-bold flex items-center gap-1">
-                    <CalendarCheck className="w-3.5 h-3.5 text-[#626B49]" />
-                    <span>إعلان المكافأة (Rewarded Video Ad):</span>
-                  </span>
-                  <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
-                    isWeeklyPlanUnlocked ? 'bg-emerald-100 text-emerald-800' : 'bg-[#EFE5C8] text-[#765B3A]'
-                  }`}>
-                    {isWeeklyPlanUnlocked ? 'الخطة مفتوحة' : 'الخطة مقفولة'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-1.5">
-                  <span className="text-[9px] text-gray-500 truncate max-w-[200px]">
-                    Unit: {OFFICIAL_TEST_REWARDED_AD_UNIT}
-                  </span>
-                  <div className="flex gap-1">
-                    <button
-                      onClick={handleRequestRewardedAd}
-                      className="bg-[#F7F0DE]0 hover:bg-amber-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-xl transition shadow-xs flex items-center gap-1"
-                    >
-                      <Play className="w-2.5 h-2.5 fill-white" />
-                      <span>محاكاة المكافأة 🎬</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsWeeklyPlanUnlocked(!isWeeklyPlanUnlocked);
-                        if (!isWeeklyPlanUnlocked) {
-                          localStorage.setItem(REWARD_PLAN_STORAGE_KEY, 'true');
-                          showToast('تم فتح الخطة يدوياً للاختبار ✓');
-                        } else {
-                          localStorage.removeItem(REWARD_PLAN_STORAGE_KEY);
-                          showToast('تم قفل الخطة للاختبار 🔒');
-                        }
-                      }}
-                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] font-bold px-2 py-1 rounded-xl transition"
-                    >
-                      {isWeeklyPlanUnlocked ? 'قفل 🔒' : 'فتح 🔓'}
-                    </button>
-                  </div>
+                  {adStatus === 'loading' && (
+                    <div className="h-full w-full bg-gray-100 border border-dashed border-gray-300 rounded-lg flex items-center justify-center gap-2 px-3 text-xs animate-pulse">
+                      <div className="w-4 h-4 border-2 border-[#626B49] border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-[11px] text-gray-500 font-medium">
+                        جارِ حجز المساحة وتحميل إعلان AdMob...
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
-          )}
-          </div>
-        )}
 
-        {/* ---------------- VIEW 2: ANDROID STUDIO CODE INSPECTOR ---------------- */}
-        {viewMode === 'code' && (
-          <div className="w-full bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden flex flex-col md:flex-row h-[740px]">
-            {/* Sidebar File Tree */}
-            <div className="w-full md:w-80 bg-[#1E293B] text-gray-200 p-4 border-l border-gray-700 flex flex-col overflow-y-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-gray-700">
-                <span className="font-bold text-xs text-[#D8C69A] flex items-center gap-1.5">
-                  <FolderCode className="w-4 h-4" />
-                  <span>مشروع الأندرويد الأصلي (42 ملف)</span>
-                </span>
-              </div>
-
-              <div className="mt-3 space-y-1">
-                {[
-                  { path: 'android/settings.gradle.kts', label: 'settings.gradle.kts' },
-                  { path: 'android/build.gradle.kts', label: 'build.gradle.kts (Root)' },
-                  { path: 'android/gradle/libs.versions.toml', label: 'libs.versions.toml' },
-                  { path: 'android/app/build.gradle.kts', label: 'app/build.gradle.kts' },
-                  { path: 'android/app/src/main/AndroidManifest.xml', label: 'AndroidManifest.xml' },
-                  { path: 'android/app/src/main/res/values/strings.xml', label: 'res/values/strings.xml' },
-                  { path: 'android/app/src/main/res/values/colors.xml', label: 'res/values/colors.xml' },
-                  { path: 'android/app/src/main/java/com/tedbeera/egypt/MainActivity.kt', label: 'MainActivity.kt' },
-                  { path: 'android/app/src/main/java/com/tedbeera/egypt/TedbeeraApp.kt', label: 'TedbeeraApp.kt' },
-                  { path: 'android/app/src/main/java/com/tedbeera/egypt/data/local/AppDatabase.kt', label: 'AppDatabase.kt (Room)' },
-                  { path: 'android/app/src/main/java/com/tedbeera/egypt/data/repository/TedbeeraRepository.kt', label: 'TedbeeraRepository.kt' },
-                  { path: 'android/app/src/main/java/com/tedbeera/egypt/data/seed/SeedData.kt', label: 'SeedData.kt' },
-                  { path: 'android/app/src/main/java/com/tedbeera/egypt/ui/components/AdMobBanner.kt', label: 'AdMobBanner.kt (Google Ads)' },
-                  { path: 'android/app/src/main/java/com/tedbeera/egypt/ui/screens/food/FoodScreen.kt', label: 'FoodScreen.kt (Compose UI)' },
-                  { path: 'android/app/src/main/java/com/tedbeera/egypt/ui/screens/food/FoodViewModel.kt', label: 'FoodViewModel.kt' },
-                  { path: 'android/app/src/main/java/com/tedbeera/egypt/ui/screens/budget/BudgetScreen.kt', label: 'BudgetScreen.kt' },
-                  { path: 'android/app/src/main/java/com/tedbeera/egypt/ui/screens/budget/BudgetViewModel.kt', label: 'BudgetViewModel.kt' },
-                  { path: 'android/app/src/main/java/com/tedbeera/egypt/ui/screens/daily/DailyScreen.kt', label: 'DailyScreen.kt' },
-                  { path: 'android/app/src/main/java/com/tedbeera/egypt/ui/screens/saved/SavedScreen.kt', label: 'SavedScreen.kt' },
-                  { path: 'android/app/src/test/java/com/tedbeera/egypt/BudgetEngineTest.kt', label: 'BudgetEngineTest.kt (Unit Test)' },
-                  { path: 'android/app/src/test/java/com/tedbeera/egypt/IngredientMatchingTest.kt', label: 'IngredientMatchingTest.kt (Unit Test)' },
-                  { path: 'android/app/src/test/java/com/tedbeera/egypt/DailyChallengeDeterministicTest.kt', label: 'DailyChallengeDeterministicTest.kt' },
-                  { path: 'android/app/src/test/java/com/tedbeera/egypt/Phase4FeaturesTest.kt', label: 'Phase4FeaturesTest.kt (Unit Test)' }
-                ].map(item => (
-                  <button
-                    key={item.path}
-                    onClick={() => {
-                      setSelectedAndroidFile(item.path);
-                      setCopiedCode(false);
-                    }}
-                    className={`w-full text-right px-2.5 py-1.5 rounded-lg text-xs truncate transition flex items-center justify-between ${
-                      selectedAndroidFile === item.path
-                        ? 'bg-[#626B49] text-white font-bold'
-                        : 'text-gray-400 hover:text-white hover:bg-gray-800'
-                    }`}
-                  >
-                    <span>{item.label}</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
+            <nav className="tadbeera-bottom-nav bg-[#FFFEFA] border-t border-[#E8E0D1] pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shrink-0 shadow-[0_-5px_20px_rgba(83,75,54,0.06)]" aria-label="التنقل الرئيسي">
+              <div className="w-full max-w-2xl mx-auto px-1.5 grid grid-cols-5">
+                {([
+                  { id: 'home', label: 'الرئيسية', Icon: Home },
+                  { id: 'food', label: 'المطبخ', Icon: Utensils },
+                  { id: 'saved', label: 'التسوق', Icon: ShoppingCart },
+                  { id: 'budget', label: 'الميزانية', Icon: Wallet },
+                  { id: 'household', label: 'البيت', Icon: Users }
+                ] as const).map(({ id, label, Icon }) => (
+                  <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id || (id === 'home' && activeTab === 'daily') ? 'page' : undefined}
+                    className={activeTab === id || (id === 'home' && activeTab === 'daily') ? "flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[#5F7651] bg-[#EEF1E8] font-extrabold" : "flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[#999487]"}>
+                    <Icon className="w-5 h-5" strokeWidth={activeTab === id || (id === 'home' && activeTab === 'daily') ? 2.5 : 1.9} />
+                    <span className="text-[10px] leading-4">{label}</span>
                   </button>
                 ))}
               </div>
-            </div>
-
-            {/* Code Viewer Panel */}
-            <div className="flex-1 flex flex-col bg-[#0F172A] overflow-hidden">
-              <div className="bg-[#1E293B] px-4 py-2.5 flex items-center justify-between border-b border-gray-700">
-                <span className="text-xs font-mono text-gray-300">{selectedAndroidFile}</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      const code = ANDROID_CODE_SAMPLES[selectedAndroidFile] || '';
-                      navigator.clipboard.writeText(code);
-                      setCopiedCode(true);
-                      setTimeout(() => setCopiedCode(false), 2000);
-                    }}
-                    className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2.5 py-1 rounded-md flex items-center gap-1 transition"
-                  >
-                    {copiedCode ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                    <span>{copiedCode ? 'تم النسخ!' : 'نسخ الكود'}</span>
-                  </button>
-                  <a
-                    href="/TedbeeraEgypt-Android.zip"
-                    download="TedbeeraEgypt-Android.zip"
-                    className="text-xs bg-[#D8C69A] hover:bg-[#FFA000] text-[#626B49] font-bold px-3 py-1 rounded-md flex items-center gap-1 transition"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>تحميل ZIP</span>
-                  </a>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-auto p-4 font-mono text-xs leading-relaxed text-gray-300">
-                <pre className="whitespace-pre-wrap select-text">
-                  {ANDROID_CODE_SAMPLES[selectedAndroidFile] || `// ============================================================
-// ملف: ${selectedAndroidFile}
-// تطبيق: تدبيرة – Tedbeera Egypt (Native Android)
-// ============================================================`}
-                </pre>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ---------------- VIEW 3: AUTOMATED UNIT TESTS ---------------- */}
-        {viewMode === 'tests' && (
-          <div className="w-full max-w-2xl bg-white rounded-3xl shadow-xl border border-gray-200 p-6 space-y-6">
-            <div className="flex items-center justify-between pb-4 border-b border-gray-200">
-              <div>
-                <h2 className="text-lg font-extrabold text-[#626B49] flex items-center gap-2">
-                  <FlaskConical className="w-5 h-5 text-[#D8C69A]" />
-                  <span>نتائج الاختبارات الآلية (Unit Tests)</span>
-                </h2>
-                <p className="text-xs text-gray-500 mt-1">هذه الشاشة تعرض مجالات الفحص؛ لا تُعد النتائج ناجحة إلا بعد تشغيل الاختبارات والتحقق من مخرجات البناء.</p>
-              </div>
-              <span className="bg-gray-100 text-gray-700 text-xs font-extrabold px-3 py-1 rounded-full flex items-center gap-1">
-                <FlaskConical className="w-3.5 h-3.5" />
-                <span>بانتظار تشغيل الاختبارات الفعلية</span>
-              </span>
-            </div>
-
-            <div className="space-y-4">
-              {/* Test 1: NaN Prevention and Shopping List Calculations */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">1. ShoppingListCalculationTest (NaN Elimination & Unpriced Handling)</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  معالجة وحماية كاملة ضد ظهور NaN ج.م، والتطبيع الآمن لبيانات الإصدارات القديمة (مثل "نصف كيلو" أو "10 أرغفة")، وفصل الأصناف غير المسعرة بشفافية تامة.
-                </p>
-                <div className="bg-white p-2.5 rounded-lg text-[11px] font-mono text-gray-700 border border-gray-200 space-y-1">
-                  <div>✓ testLegacyStringQuantityNormalization("نصف كيلو") → qty=0.5, unit="كيلو", no NaN</div>
-                  <div>✓ testMissingPriceReturnsNullLineTotal(qty=2, price=null) → null ("السعر غير محدد")</div>
-                  <div>✓ testGrandTotalWithUnpricedItems() → calculates known total + raises incomplete badge</div>
-                  <div>✓ testInstantRecalculationOnPriceEdit(from null to 20 EGP) → line=40, total updated</div>
-                  <div>✓ testIngredientMergingWithoutDuplicates("عدس", "كوب") → quantities merged without extra rows</div>
-                </div>
-              </div>
-
-              {/* Test 2 */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">2. BudgetEngineTest (Boundary & 100% Invariant)</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  فحص دقة حساب نسب الميزانية، حظر وتصحيح المبالغ السالبة إلى صفر، وضمان إجمالي 100% عند تغيير السلايدر المتكرر والقيم الحدية (0% و100%).
-                </p>
-                <div className="bg-white p-2.5 rounded-lg text-[11px] font-mono text-gray-700 border border-gray-200 space-y-1">
-                  <div>✓ testNegativeAmountIsClampedToZero() → 0.0 EGP</div>
-                  <div>✓ testPercentagesAlwaysSumToExact100([75, 13, 50]) → sum = 100%</div>
-                  <div>✓ testRedistributionOnSliderChanges(drag to 75%, 13%, 50%) → all sums = 100%</div>
-                  <div>✓ testBoundaryValuesZeroAndHundred(0% & 100%) → sum = 100%</div>
-                  <div>✓ testAllZerosInputRebalancedSafely([0, 0, 0]) → sum = 100%</div>
-                  <div>✓ testCurrencyRecalculatedWhenBudgetOrPercentagesChange() → Recalculated correctly</div>
-                </div>
-              </div>
-
-              {/* Test 3 */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">3. IngredientMatchingTest</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  التحقق من عدم ادعاء اكتمال وجبة إذا كان ينقصها أي مكون أساسي، وفصل النواقص بدقة متناهية.
-                </p>
-                <div className="bg-white p-2 rounded-lg text-[11px] font-mono text-gray-500 border border-gray-200">
-                  Assert.assertFalse(recipeMatch.isCompleteMatch) → Passed when tomatoes missing from Shakshouka.
-                </div>
-              </div>
-
-              {/* Test 4 */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">4. DailyChallengeDeterministicTest</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  ضمان اختيار نفس التحدي الحتمي طوال اليوم الواحد بالاعتماد على مفتاح التاريخ yyyy-MM-dd وعدم تكرار السجلات في Room.
-                </p>
-                <div className="bg-white p-2 rounded-lg text-[11px] font-mono text-gray-500 border border-gray-200">
-                  SeedData.getChallengeForDateKey("2026-10-25") == SeedData.getChallengeForDateKey("2026-10-25") → True.
-                </div>
-              </div>
-
-              {/* Test 5: AdMob Stabilization & Policy Lifecycle */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">5. AdMobAdvertisingStabilizationTest (Layout & Policy Compliance)</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  التحقق من حجز مساحة البانر الثابتة لمنع اهتزاز الشاشة، والانهيار النظيف عند فشل الشبكة دون ترك فراغ ميت، وتوفير خلوص تمرير سفلي ديناميكي (70–90 بكسل فراغ آمن)، وحظر تسريب أدوات المحاكاة إلى حزم الإنتاج عبر import.meta.env.DEV، وتعطيل الإعلانات البينية افتراضياً وتقييد التكرار (2 بالجلسة و120 ثانية راحة) ومنع مقاطعة مهام المستخدم الحيوية.
-                </p>
-                <div className="bg-white p-2.5 rounded-lg text-[11px] font-mono text-gray-700 border border-gray-200 space-y-1">
-                  <div>✓ testBannerFixedReservationNoLayoutShift() → 50px height preserved during loading</div>
-                  <div>✓ testBannerGracefulCollapseOnFailure() → Height collapses to 0 on error with no blank dead space</div>
-                  <div>✓ testSafeDynamicScrollClearance() → pb-52 (80px clearance) & pb-36 (88px clearance) guarantees 70–90px breathing room</div>
-                  <div>✓ testDevOnlyAdSimulatorGuarded() → Simulator UI strictly excluded from production builds via import.meta.env.DEV</div>
-                  <div>✓ testPolicyAdLabelingVisible() → Clear "إعلان" label prevents deceptive accidental clicks</div>
-                  <div>✓ testInterstitialDisabledByDefault() → isInterstitialEnabled == false</div>
-                  <div>✓ testInterstitialFrequencyCapMax2() → Blocked after 2 session impressions</div>
-                  <div>✓ testTaskInterruptionProtection() → Blocked while budgeting, editing prices, or viewing recipe</div>
-                </div>
-              </div>
-
-              {/* Test 6: WhatsApp Shopping List Sharing & Unpriced Calculation Safety */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">6. WhatsAppShoppingShareTest (Arabic Formatting & Price Transparency)</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  التحقق من تصفية الأصناف غير المشتراة فقط (!isChecked)، وتنسيق الأسعار والكميات بدقة بدون NaN، وفصل الأصناف غير المسعرة وتوضيحها ("سعر غير محدد")، وإبراز الإجمالي الجزئي بشفافية، ومنع إرسال رسائل فارغة عند خلو القائمة.
-                </p>
-                <div className="bg-white p-2.5 rounded-lg text-[11px] font-mono text-gray-700 border border-gray-200 space-y-1">
-                  <div>✓ testOnlyUnpurchasedItemsIncluded() → Checked items omitted, only pending items shared</div>
-                  <div>✓ testUnpricedItemsClearlyDesignated() → Labeled "سعر غير محدد" without default 0 or NaN</div>
-                  <div>✓ testSummaryWithMixedPricedAndUnpriced() → Explicitly reports partial subtotal & count of unpriced items</div>
-                  <div>✓ testEmptyShoppingListBlocked() → Friendly alert raised, no blank WhatsApp window launched</div>
-                  <div>✓ testUrlEncodingSafe() → encodeURIComponent(message) properly constructs https://wa.me/?text=...</div>
-                </div>
-              </div>
-
-              {/* Test 7: Zero-Missing-Ingredients Recipe Filter Engine */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">7. ZeroMissingRecipeFilterTest (100% Pantry Match Integrity)</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  التحقق من حظر ظهور أي وجبة ينقصها أي مكون عند تفعيل فلتر "اطبخ باللي عندي فقط"، وإظهار شارة "جاهزة بالكامل بمكوناتك الحالية"، وعرض حالة فراغ إرشادية واضحة مع زر إلغاء الفلتر عند عدم توفر أي وجبة جاهزة 100%.
-                </p>
-                <div className="bg-white p-2.5 rounded-lg text-[11px] font-mono text-gray-700 border border-gray-200 space-y-1">
-                  <div>✓ testZeroMissingFilterStrictCompleteness() → Every displayed recipe has missing.length === 0</div>
-                  <div>✓ testCompletenessBadgeShown() → "جاهزة بالكامل بمكوناتك الحالية" rendered on all matched recipes</div>
-                  <div>✓ testEmptyStateWhenZeroQualify() → Friendly Arabic explanation displayed when no recipe matches 100%</div>
-                  <div>✓ testResetButtonRestoresFullList() → Clicking reset resets isZeroMissingOnly and displays suggested meals</div>
-                </div>
-              </div>
-
-              {/* Test 8: Safe Local Data Backup & Restore Engine */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">8. BackupRestoreSafetyTest (Schema Validation & Rollback Protection)</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  التحقق من إنشاء ملف نسخة احتياطية مرقّم بإصدار tedbeera-backup-YYYY-MM-DD.json، والتحقق الصارم من صحة المخطط (Schema Validation)، وفرض تأكيد مسبق قبل الاستبدال، وحماية التراجع (Rollback Protection) في حال حدوث أي خطأ، وتحديث React State والتخزين المحلي فوراً.
-                </p>
-                <div className="bg-white p-2.5 rounded-lg text-[11px] font-mono text-gray-700 border border-gray-200 space-y-1">
-                  <div>✓ testBackupPayloadStructureAndVersion() → version=1, app="Tedbeera Egypt", timestamp ISO recorded</div>
-                  <div>✓ testCorruptedJsonRejectedSafely() → Invalid schema caught, error toast triggered without crash</div>
-                  <div>✓ testExplicitConfirmationRequired() → User must confirm overwrite before localStorage changes</div>
-                  <div>✓ testRollbackOnStorageFailure() → Snapshot restored if storage quota exceeded or write fails</div>
-                  <div>✓ testPercentagesRescaledToExact100() → Category percentages sum verified/rebalanced on import</div>
-                  <div>✓ testImmediateStateAndStorageRefresh() → All 11 LocalStorage keys and React state updated in-sync</div>
-                </div>
-              </div>
-
-              {/* Test 9: Visual Budget Analytics & Donut Integrity */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">9. VisualBudgetAnalyticsAndDonutTest (Progress Thresholds & Overrun Badges)</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  التحقق من ألوان أشرطة التقدم الديناميكية (أخضر &lt;80%، برتقالي 80%–&lt;100%، أحمر ≥100%)، وقص الشريط بصرياً عند 100% مع إبقاء النسبة الفعلية في النص، وشارة تجاوز الميزانية بـ X ج.م فقط عند الزيادة، والتعامل الآمن مع التخصيص الصفري، وصحة توزيع مخطط الدونات SVG بدون مكتبات خارجية، وعرض حالة الفراغ الإرشادية.
-                </p>
-                <div className="bg-white p-2.5 rounded-lg text-[11px] font-mono text-gray-700 border border-gray-200 space-y-1">
-                  <div>✓ testDynamicColorGreenUnder80(spent=700, alloc=1000) → color='green', progress=70%</div>
-                  <div>✓ testDynamicColorAmber80To99(spent=850, alloc=1000) → color='amber', progress=85%</div>
-                  <div>✓ testDynamicColorRedAtOrOver100(spent=1150, alloc=1000) → color='red', progress=115%</div>
-                  <div>✓ testVisualProgressCappedAt100(progress=115%) → visualClamped=100%, textLabel="115%"</div>
-                  <div>✓ testOverBudgetBadgeStrictlyConditional() → Exceeded badge shown only when spent &gt; allocated</div>
-                  <div>✓ testZeroAllocationDefensiveHandling(alloc=0, spent=200) → progress=100%, color='red', no NaN or /0</div>
-                  <div>✓ testDonutChartProportionalSvgSegments() → Dasharray & offset calculate accurate slice lengths</div>
-                  <div>✓ testDonutEmptyStateWhenZeroExpenses() → Informative Arabic state rendered when total spent is 0</div>
-                </div>
-              </div>
-
-              {/* Test 10: Payday Cycle & Daily Spending Cap */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">10. PaydayCycleAndDailyCapTest (Payday Math & Recommended Daily Cap)</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  التحقق من احتساب موعد الراتب (1–31) ومعالجة الشهور القصيرة وقفل السنة (فبراير 28/29، شهور 30 يوماً)، والعد التنازلي الدقيق، ورسالة الاحتفال "النهارده موعد الراتب 🎉"، وحساب الحد اليومي الموصى به (المتبقي ÷ الأيام المتبقية)، وتنبيه استهلاك الميزانية بالكامل عند نفادها.
-                </p>
-                <div className="bg-white p-2.5 rounded-lg text-[11px] font-mono text-gray-700 border border-gray-200 space-y-1">
-                  <div>✓ testPaydayDayClampedForShortMonths(day=31 in Feb 2026) → Clamped safely to 28/29</div>
-                  <div>✓ testPaydayCountdownDaysCalculation(today=20, payday=25) → remainingDays=5</div>
-                  <div>✓ testPaydayTodayCelebration(today=25, payday=25) → isPaydayToday=true ("النهارده موعد الراتب 🎉")</div>
-                  <div>✓ testPaydayTomorrowCountdown(today=24, payday=25) → daysRemaining=1 ("غداً موعد الراتب")</div>
-                  <div>✓ testMonthAndYearRolloverMath(today=Dec 28, payday=Jan 1) → Correct target year & month resolved</div>
-                  <div>✓ testRecommendedDailySpendingCap(remaining=1500, days=10) → dailyCap=150 EGP/day</div>
-                  <div>✓ testBudgetExhaustedDailyCapWarning(remaining=-200, days=5) → dailyCap=0 EGP, warning displayed</div>
-                  <div>✓ testPaydayPersistenceUniqueKey() → Persisted cleanly to "tedbeera_payday_day"</div>
-                </div>
-              </div>
-
-              {/* Test 11: Arabic Voice Ingredient Selection & Speech Normalization */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">11. ArabicVoiceIngredientMatchingTest (Speech Normalization & Aliases)</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  تطبيع النص المنطوق باللهجة المصرية (توحيد الهمزات والياء والألف اللينة والتاء المربوطة وحذف التشكيل والتطويل)، وربط المرادفات الشعبية مثل "قوطة" إلى "طماطم" و"بتنجان" إلى "باذنجان" و"رز" إلى "أرز" و"توم" إلى "ثوم"، وتصفية الكلمات الزائدة وحروف الجر، والإضافة التراكمية الآمنة للمكونات دون مسح المكونات السابقة وبدون أي تكرار.
-                </p>
-                <div className="bg-white p-2.5 rounded-lg text-[11px] font-mono text-gray-700 border border-gray-200 space-y-1">
-                  <div>✓ testArabicTextNormalization("أَرُزٌّ وَطَمَاطِمْ") → strips diacritics & unifies hamzas → "ارز وطماطم"</div>
-                  <div>✓ testEgyptianDialectAliasesMap("قوطة وبتنجان") → successfully maps to ["طماطم", "باذنجان"]</div>
-                  <div>✓ testSpokenFillerStopWordsIgnored("عندي بصل ورز في البيت") → strips filler words → extracts ["بصل", "أرز"]</div>
-                  <div>✓ testSafeAdditiveSelectionPreservesExisting(prev=["شعرية"], spoken=["طماطم"]) → ["شعرية", "طماطم"]</div>
-                  <div>✓ testDeduplicationPreventsDoubleEntries(spoken=["طماطم", "طماطم"]) → unique set ["طماطم"]</div>
-                  <div>✓ testUnmatchedSpokenWordsGracefulFeedback("مروحة وتليفزيون") → unassigned tokens identified safely</div>
-                </div>
-              </div>
-
-              {/* Test 12: Daily Tips Interaction, 5 Filters & Bookmarks */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">12. DailyTipsInteractionAndBookmarksTest (5 Filters & Saved Tips)</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  فحص زر تفاعل "جربت الحيلة دي ووفرت"، وعدّاد الإنجازات المحفوظ محلياً بمنع تضخيم النقر المتكرر (Set Uniqueness)، والتصفية الحصرية بالأقسام الخمسة (الكل، تنظيف، توفير كهرباء، مطبخ وتغذية، حيل تسوق)، وقسم "أفكاري المحفوظة" المستقل المتاح من تبويب تدبيرة اليوم والمحفوظات، والتوافق العكسي لمفاتيح التخزين وحالة الفراغ الإرشادية.
-                </p>
-                <div className="bg-white p-2.5 rounded-lg text-[11px] font-mono text-gray-700 border border-gray-200 space-y-1">
-                  <div>✓ testTriedTipTogglesSafely(initial=[], click="idea_1") → ["idea_1"], second click removes it</div>
-                  <div>✓ testUniqueAchievementCounterSetLogic(tried=["idea_1", "idea_1", "idea_2"]) → uniqueCount = 2</div>
-                  <div>✓ testFiveExactCategoryFiltersMatch() → verifies 'الكل', 'تنظيف', 'توفير كهرباء', 'مطبخ وتغذية', 'حيل تسوق'</div>
-                  <div>✓ testBookmarkPersistenceToPhase4CKey("idea_3") → stored in 'tedbeera_phase4c_saved_tips' & synced backward</div>
-                  <div>✓ testSavedTipsSectionViewMode() → filters saved tips dynamically in both Daily Tips and Saved Tabs</div>
-                  <div>✓ testSavedTipsEmptyStateText() → displays exact text: "لسه مفيش حيل محفوظة. احفظ أي تدبيرة عجبتك..."</div>
-                </div>
-              </div>
-
-              {/* Test 13: Rewarded Ads Service & Local Notifications Service */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">13. RewardedAdsAndLocalNotificationsTest (Ad Unit, Simulation & Notifications)</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  التحقق من تكوين وحدة إعلان المكافأة التجريبية الرسمية (ca-app-pub-3940256099942544/5224354917)، وتشغيل محاكاة واجهة الويب بشكل آمن عند عدم توفر Capacitor، ومنع منح المكافأة عند الإلغاء المبكر، ومنح المكافأة بدقة وإدامة الحالة بـ tedbeera_phase4d_weekly_plan_unlocked، وجدولة 3 تذكيرات مستقلة للفطار والغداء والعشاء بمعرفات ثابتة 101 و102 و103 لمنع التكرار، وتوفير بديل ويب آمن للإشعارات.
-                </p>
-                <div className="bg-white p-2.5 rounded-lg text-[11px] font-mono text-gray-700 border border-gray-200 space-y-1">
-                  <div>✓ testOfficialTestRewardedAdUnitConfigured() → matches "ca-app-pub-3940256099942544/5224354917"</div>
-                  <div>✓ testWebSimulationFallbackSelectedInBrowser() → IS_NATIVE == false, simulation adapter active</div>
-                  <div>✓ testEarlyCancellationGrantsNoReward() → rewardGranted == false when simulation dismissed</div>
-                  <div>✓ testSuccessfulSimulationCompletionGrantsRewardIdempotently() → weeklyPlanUnlocked = true persisted safely</div>
-                  <div>✓ testStableNotificationIdPreventsDuplicates() → ID 101 used for daily 11:00 AM savings reminder</div>
-                  <div>✓ testWebNotificationFallbackSafeWithoutCrash() → graceful Arabic fallback shown in pure web preview</div>
-                </div>
-              </div>
-
-              {/* Test 14: Smart Deals & Affiliate Integrations Test */}
-              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-800">14. AffiliateDealsIntegrationTest (Smart Deals, Coupons & Disclosure)</span>
-                  <span className="text-xs font-extrabold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">غير مُشغّل</span>
-                </div>
-                <p className="text-xs text-gray-600">
-                  التحقق من تكوين الشركاء المركزي (نون، أمازون، كارفور، طلبات)، وفلترة العروض النشطة والمؤكدة فقط، ونسخ أكواد الخصم بدقة مع عرض رسالة التأكيد العربية ("تم نسخ كود الخصم")، وفتح روابط الشراء الآمنة بـ target="_blank" rel="noopener noreferrer"، وإبراز إفصاح العمولة والشفافية بالقرب من الويدجت، والحفاظ على استقلالية الميزانية وقائمة النواقص دون أي تعديل على بيانات التخزين المحلي المالية.
-                </p>
-                <div className="bg-white p-2.5 rounded-lg text-[11px] font-mono text-gray-700 border border-gray-200 space-y-1">
-                  <div>✓ testCentralizedAffiliateDealsConfigLoaded() → Noon, Amazon, Carrefour, Talabat configured correctly</div>
-                  <div>✓ testUnverifiedOffersHiddenOrFiltered() → Unverified/expired deals filtered out of active widget</div>
-                  <div>✓ testCouponCopyClipboardActionAndToast() → Copies exact code and triggers Arabic success toast</div>
-                  <div>✓ testExternalShoppingCtaSafeNavigation() → Opens store with target="_blank" rel="noopener noreferrer"</div>
-                  <div>✓ testTransparencyDisclosureRendered() → Commission disclosure visible near affiliate widget</div>
-                  <div>✓ testFinancialAndShoppingDataIsolation() → Zero side-effects on expenses, budget calculations, or shopping items</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+            </nav>
 
       </main>
 
@@ -4427,7 +3947,7 @@ export default function App() {
       {selectedRecipeModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-3xl p-5 shadow-2xl max-h-[88vh] overflow-y-auto space-y-4">
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between gap-2">
               <div>
                 <h3 className="text-lg font-extrabold text-[#626B49]">{selectedRecipeModal.name}</h3>
                 <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
@@ -4438,12 +3958,28 @@ export default function App() {
                   </span>
                 </div>
               </div>
-              <button
-                onClick={() => setSelectedRecipeModal(null)}
-                className="text-gray-400 hover:text-gray-600 text-lg font-bold p-1"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => toggleSaveRecipe(selectedRecipeModal.id)}
+                  aria-label={savedRecipeIds.includes(selectedRecipeModal.id) ? 'إزالة من المحفوظات' : 'حفظ الوصفة'}
+                  title={savedRecipeIds.includes(selectedRecipeModal.id) ? 'إزالة من المحفوظات' : 'حفظ الوصفة'}
+                  className={`flex h-9 w-9 items-center justify-center rounded-xl border transition ${
+                    savedRecipeIds.includes(selectedRecipeModal.id)
+                      ? 'border-[#D8C69A] bg-[#F7F0DE] text-[#765B3A]'
+                      : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  <Bookmark className={`h-4 w-4 ${savedRecipeIds.includes(selectedRecipeModal.id) ? 'fill-[#765B3A]' : ''}`} />
+                </button>
+                <button
+                  onClick={() => setSelectedRecipeModal(null)}
+                  className="text-gray-400 hover:text-gray-600 text-lg font-bold p-1"
+                  aria-label="إغلاق"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             <p className="text-[11px] text-gray-500 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
@@ -4521,7 +4057,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setSelectedRecipeModal(null)}
-                className="bg-[#626B49] text-white font-bold py-2.5 px-4 rounded-xl text-xs hover:bg-[#002171] transition"
+                className="bg-[#626B49] text-white font-bold py-2.5 px-4 rounded-xl text-xs hover:bg-[#1E5631] transition"
               >
                 تمام، فهمت
               </button>
@@ -4631,7 +4167,7 @@ export default function App() {
                     showToast('يرجى إدخال اسم الصنف أولاً');
                   }
                 }}
-                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#002171] transition"
+                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#1E5631] transition"
               >
                 إضافة للقائمة
               </button>
@@ -4681,7 +4217,7 @@ export default function App() {
               </button>
               <button
                 onClick={handleSaveItemPrice}
-                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#002171] transition"
+                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#1E5631] transition"
               >
                 حفظ السعر
               </button>
@@ -4755,7 +4291,7 @@ export default function App() {
               </button>
               <button
                 onClick={handleAddExpense}
-                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#002171] transition"
+                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#1E5631] transition"
               >
                 تسجيل وحفظ
               </button>
@@ -4804,7 +4340,7 @@ export default function App() {
               </button>
               <button
                 onClick={handleAddCustomCategory}
-                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#002171] transition"
+                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#1E5631] transition"
               >
                 إضافة وإعادة ضبط 100%
               </button>
@@ -4893,7 +4429,7 @@ export default function App() {
                     showToast('يرجى إدخال يوم صالح بين 1 و 31');
                   }
                 }}
-                className="flex-1 bg-[#626B49] text-white font-bold py-2.5 rounded-xl text-xs hover:bg-[#002171] transition"
+                className="flex-1 bg-[#626B49] text-white font-bold py-2.5 rounded-xl text-xs hover:bg-[#1E5631] transition"
               >
                 حفظ الموعد
               </button>
@@ -4931,7 +4467,7 @@ export default function App() {
                 onChange={(e) => setHouseholdName(e.target.value)}
                 placeholder="اسم الأسرة (اختياري)"
                 maxLength={60}
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-blue-400"
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#626B49]"
               />
               <div className="grid grid-cols-2 gap-2">
                 <input
@@ -4940,7 +4476,7 @@ export default function App() {
                   onChange={(e) => setHouseholdGovernorate(e.target.value)}
                   placeholder="المحافظة"
                   maxLength={40}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-blue-400"
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#626B49]"
                 />
                 <input
                   type="text"
@@ -4948,7 +4484,7 @@ export default function App() {
                   onChange={(e) => setHouseholdCity(e.target.value)}
                   placeholder="المدينة / المركز"
                   maxLength={40}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-blue-400"
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#626B49]"
                 />
               </div>
               <div className="text-[10px] text-gray-600">عدد أفراد الأسرة: {familySize} · العملة: جنيه مصري</div>
@@ -4967,7 +4503,7 @@ export default function App() {
                   });
                   showToast(saved ? 'تم حفظ بيانات الأسرة على هذا الجهاز ✓' : 'تعذر حفظ البيانات. تحققي من مساحة التخزين بالجهاز.');
                 }}
-                className="w-full rounded-xl bg-[#626B49] px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-800"
+                className="w-full rounded-xl bg-[#626B49] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#1E5631]"
               >
                 حفظ بيانات الأسرة
               </button>
@@ -5111,7 +4647,7 @@ export default function App() {
               </button>
               <button
                 onClick={handleConfirmRestore}
-                className="flex-1 bg-[#626B49] hover:bg-[#002171] text-white font-bold py-2.5 rounded-xl text-xs transition shadow-sm"
+                className="flex-1 bg-[#626B49] hover:bg-[#1E5631] text-white font-bold py-2.5 rounded-xl text-xs transition shadow-sm"
               >
                 تأكيد الاستعادة
               </button>
@@ -5216,7 +4752,7 @@ export default function App() {
                 <button
                   onClick={() => { setAdStatus('loading'); showToast('محاكاة التحميل وحجز المساحة ⏳'); }}
                   className={`p-2 rounded-xl text-center font-bold text-xs transition border ${
-                    adStatus === 'loading' ? 'bg-[#F7F0DE]0 text-white border-amber-500 animate-pulse' : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                    adStatus === 'loading' ? 'bg-[#D97706] text-white border-[#D97706] animate-pulse' : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
                   }`}
                 >
                   ⏳ تحميل (Reserve Space)
@@ -5266,7 +4802,7 @@ export default function App() {
 
                 <button
                   onClick={triggerTestInterstitial}
-                  className="bg-[#626B49] hover:bg-[#002171] text-white text-xs font-bold px-3 py-1.5 rounded-xl transition shadow-sm"
+                  className="bg-[#626B49] hover:bg-[#1E5631] text-white text-xs font-bold px-3 py-1.5 rounded-xl transition shadow-sm"
                 >
                   اختبار العرض الآن 🎬
                 </button>
@@ -5276,7 +4812,7 @@ export default function App() {
             <div className="pt-2">
               <button
                 onClick={() => setIsAdControlsOpen(false)}
-                className="w-full bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#002171] transition"
+                className="w-full bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#1E5631] transition"
               >
                 إغلاق اللوحة
               </button>
@@ -5309,7 +4845,7 @@ export default function App() {
             </div>
 
             {/* Ad Body Content */}
-            <div className="p-6 bg-gradient-to-b from-[#78815B]50 to-white flex flex-col items-center text-center space-y-4">
+            <div className="p-6 bg-gradient-to-b from-[#F1F5EC] to-white flex flex-col items-center text-center space-y-4">
               <div className="w-16 h-16 rounded-2xl bg-[#626B49] text-[#D8C69A] font-black flex items-center justify-center text-2xl shadow-lg">
                 تد
               </div>
@@ -5340,7 +4876,7 @@ export default function App() {
               <div className="w-full pt-2">
                 <button
                   onClick={handleDismissInterstitial}
-                  className="w-full bg-[#626B49] hover:bg-[#002171] text-white font-extrabold py-3 rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5"
+                  className="w-full bg-[#626B49] hover:bg-[#1E5631] text-white font-extrabold py-3 rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5"
                 >
                   <span>استئناف واستخدام تدبيرة</span>
                   <ArrowRight className="w-4 h-4" />
@@ -5367,7 +4903,7 @@ export default function App() {
               </div>
               <button
                 onClick={handleCancelRewardSimulation}
-                className="w-6 h-6 rounded-full bg-blue-900/80 hover:bg-blue-800 text-white font-black flex items-center justify-center transition text-xs"
+                className="w-6 h-6 rounded-full bg-[#4B5337]/90 hover:bg-[#3A412A] text-white font-black flex items-center justify-center transition text-xs"
                 title="إلغاء الإعلان"
               >
                 ✕
@@ -5405,7 +4941,7 @@ export default function App() {
                 <div className="w-full space-y-2 pt-1">
                   <button
                     onClick={handleStartSimulationPlayback}
-                    className="w-full bg-[#626B49] hover:bg-[#002171] text-white font-extrabold py-3 rounded-xl text-xs transition shadow-md flex items-center justify-center gap-2"
+                    className="w-full bg-[#626B49] hover:bg-[#1E5631] text-white font-extrabold py-3 rounded-xl text-xs transition shadow-md flex items-center justify-center gap-2"
                   >
                     <Play className="w-4 h-4 fill-white" />
                     <span>ابدأ المحاكاة (5 ثوانٍ)</span>
@@ -5615,7 +5151,7 @@ export default function App() {
               </button>
               <button
                 onClick={handleSaveCustomRecipe}
-                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#002171] transition"
+                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#1E5631] transition"
               >
                 حفظ وإضافة
               </button>
@@ -5624,10 +5160,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Footer */}
-      {!isNativeApp && <footer className="w-full text-center py-4 text-xs text-gray-500 font-medium">
-        تدبيرة — كل جنيه ليه قيمة 💛 • وفّر بذكاء ودبّر بيتك وخلي كل جنيه في مكانه © {new Date().getFullYear()} 🇪🇬
-      </footer>}
     </div>
   );
 }
