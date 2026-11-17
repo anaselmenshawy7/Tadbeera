@@ -39,7 +39,9 @@ import {
   CalendarCheck,
   Lock,
   Unlock,
-  ExternalLink
+  ExternalLink,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import {
   COMMON_INGREDIENTS,
@@ -80,8 +82,10 @@ import {
   calculateUniqueAchievementCount,
   toggleTriedTipId,
   toggleSavedTipId,
+  normalizeBudgetPercentages,
   REWARD_PLAN_STORAGE_KEY,
-  REMINDER_STORAGE_KEY
+  REMINDER_STORAGE_KEY,
+  reconcileDirectBudgetAllocations
 } from './data/calculationUtils';
 import {
   getRewardedAdService,
@@ -103,7 +107,12 @@ import {
 } from './data/affiliateDeals';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { RecipeIllustration } from './components/RecipeIllustration';
 import { ShoppingTotalsSummary } from './features/shopping/ShoppingTotalsSummary';
+import { HomeInventorySection } from './features/inventory/HomeInventorySection';
+import { EgyptianRecipeSpeechPlayer, buildEgyptianRecipeSpeechSegments } from './features/recipes/recipeSpeech';
+import { AdMob, BannerAdPosition, BannerAdOptions } from '@capacitor-community/admob';
+import { ADMOB_CONFIG } from './config/admobConfig';
 // Online recipe discovery is intentionally mounted as its own focused kitchen sub-screen.
 // The dedicated online search always attempts remote recipe providers before local fallbacks.
 // Heavy feature screens are loaded on demand so the first app screen stays lighter.
@@ -127,6 +136,8 @@ interface MicrophonePermissionPlugin {
   request(): Promise<{ granted: boolean }>;
   startListening(): Promise<void>;
   stopListening(): Promise<void>;
+  speak(options: { text: string }): Promise<void>;
+  stopSpeaking(): Promise<void>;
   addListener(
     eventName: 'speechResult',
     listenerFunc: (event: { transcript?: string }) => void
@@ -134,6 +145,10 @@ interface MicrophonePermissionPlugin {
   addListener(
     eventName: 'speechError',
     listenerFunc: (event: { error?: string }) => void
+  ): Promise<{ remove(): Promise<void> | void }>;
+  addListener(
+    eventName: 'speechPlaybackStatus',
+    listenerFunc: (event: { status?: string }) => void
   ): Promise<{ remove(): Promise<void> | void }>;
 }
 
@@ -169,85 +184,19 @@ export const getBottomScrollPaddingClass = (adStatus: 'loading' | 'loaded' | 'fa
   return adStatus === 'failed' || adStatus === 'disabled' ? 'pb-36' : 'pb-52';
 };
 
-// SVG Fallback renderer for food and tips
+// SVG Fallback renderer for food and tips (100% offline bespoke dish artwork)
 function SvgIllustration({
   type,
+  recipeName = '',
+  recipeId = '',
   className = "w-full h-full"
 }: {
   type: string;
+  recipeName?: string;
+  recipeId?: string;
   className?: string;
 }) {
-  switch (type) {
-    case 'egg':
-      return (
-        <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="100" height="100" rx="16" fill="#FEF3C7" />
-          <circle cx="50" cy="50" r="32" fill="#FDE68A" stroke="#A68B69" strokeWidth="3" />
-          <ellipse cx="44" cy="46" rx="14" ry="12" fill="#A68B69" />
-          <ellipse cx="46" cy="44" rx="5" ry="4" fill="#FEF3C7" opacity="0.6" />
-          <circle cx="62" cy="58" r="3" fill="#10B981" />
-          <circle cx="36" cy="62" r="2.5" fill="#EF4444" />
-          <circle cx="56" cy="34" r="2" fill="#10B981" />
-        </svg>
-      );
-    case 'koshary':
-      return (
-        <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="100" height="100" rx="16" fill="#FEE2E2" />
-          <path d="M20 56C20 72 34 82 50 82C66 82 80 72 80 56H20Z" fill="#DC2626" />
-          <path d="M22 56C22 50 35 44 50 44C65 44 78 50 78 56H22Z" fill="#F87171" />
-          <ellipse cx="50" cy="45" rx="24" ry="7" fill="#B45309" />
-          <circle cx="45" cy="42" r="2" fill="#FEF3C7" />
-          <circle cx="55" cy="44" r="2" fill="#FEF3C7" />
-          <circle cx="40" cy="46" r="2" fill="#FEF3C7" />
-          <circle cx="52" cy="38" r="3" fill="#D97706" />
-        </svg>
-      );
-    case 'pasta':
-      return (
-        <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="100" height="100" rx="16" fill="#FEF9C3" />
-          <rect x="22" y="38" width="56" height="34" rx="8" fill="#A68B69" />
-          <path d="M26 44C32 40 40 46 48 42C56 38 64 44 74 40" stroke="#78350F" strokeWidth="3" strokeLinecap="round" />
-          <path d="M26 52C32 48 40 54 48 50C56 46 64 52 74 48" stroke="#78350F" strokeWidth="3" strokeLinecap="round" />
-          <path d="M26 60C32 56 40 62 48 58C56 54 64 60 74 56" stroke="#78350F" strokeWidth="3" strokeLinecap="round" />
-        </svg>
-      );
-    case 'soup':
-      return (
-        <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="100" height="100" rx="16" fill="#FFEDD5" />
-          <path d="M24 50C24 68 36 78 50 78C64 78 76 68 76 50H24Z" fill="#F97316" />
-          <ellipse cx="50" cy="50" rx="26" ry="7" fill="#FDBA74" />
-          <path d="M42 32C40 28 44 24 42 20" stroke="#FB923C" strokeWidth="2.5" strokeLinecap="round" />
-          <path d="M50 34C48 30 52 26 50 22" stroke="#FB923C" strokeWidth="2.5" strokeLinecap="round" />
-          <path d="M58 32C56 28 60 24 58 20" stroke="#FB923C" strokeWidth="2.5" strokeLinecap="round" />
-        </svg>
-      );
-    case 'foul':
-      return (
-        <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="100" height="100" rx="16" fill="#ECFDF5" />
-          <ellipse cx="50" cy="58" rx="34" ry="22" fill="#047857" />
-          <ellipse cx="50" cy="54" rx="28" ry="16" fill="#92400E" />
-          <circle cx="44" cy="52" r="3" fill="#D97706" />
-          <circle cx="56" cy="56" r="3" fill="#D97706" />
-          <circle cx="50" cy="48" r="3.5" fill="#A68B69" />
-          <circle cx="42" cy="58" r="2.5" fill="#EF4444" />
-        </svg>
-      );
-    case 'potatoes':
-    case 'meat':
-    case 'salad':
-    default:
-      return (
-        <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="100" height="100" rx="16" fill="#E8EBDD" />
-          <circle cx="50" cy="50" r="30" fill="#3B82F6" opacity="0.8" />
-          <path d="M35 50L45 60L65 40" stroke="#FFFFFF" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
-  }
+  return <RecipeIllustration type={type} recipeName={recipeName} recipeId={recipeId} className={className} />;
 }
 
 function renderCategoryIcon(iconName?: string, className = "w-4 h-4") {
@@ -382,22 +331,27 @@ export default function App() {
     }
   });
 
-  const [categoryPercentages, setCategoryPercentages] = useState<number[]>(() => {
+  const [categoryAllocations, setCategoryAllocations] = useState<Record<string, number>>(() => {
     try {
-      const stored = localStorage.getItem('tedbeera_percentages');
+      const stored = localStorage.getItem('tedbeera_category_allocations');
       if (stored) {
-        const arr = JSON.parse(stored);
-        if (Array.isArray(arr) && arr.length > 0 && arr.every(n => typeof n === 'number' && !isNaN(n))) {
-          // Verify exact 100% invariant
-          const sum = arr.reduce((a, b) => a + b, 0);
-          if (sum === 100) return arr;
-        }
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === 'object') return parsed;
       }
-      return DEFAULT_BUDGET_CATEGORIES.map(c => c.defaultPct);
-    } catch {
-      return DEFAULT_BUDGET_CATEGORIES.map(c => c.defaultPct);
-    }
+    } catch {}
+    const base = 2500;
+    const initial: Record<string, number> = {};
+    DEFAULT_BUDGET_CATEGORIES.forEach(c => {
+      initial[c.id] = Math.round((base * c.defaultPct) / 100);
+    });
+    return initial;
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('tedbeera_category_allocations', JSON.stringify(categoryAllocations));
+    } catch {}
+  }, [categoryAllocations]);
 
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(() => {
     const mapHouseholdCategory = (categoryId: string): string => {
@@ -590,7 +544,7 @@ export default function App() {
       isQuick: prepNum <= 20,
       usesLeftovers: false,
       svgFallbackIcon: 'koshary',
-      imageUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=80',
+      imageUrl: '',
       ingredients: [
         {
           name: customRecipeIngredientName.trim() || 'مكون أساسي',
@@ -813,6 +767,36 @@ export default function App() {
     };
   }, [isNativeApp]);
 
+  // AdMob Bottom Adaptive Banner Integration on Native Android
+  useEffect(() => {
+    if (!isNativeApp) return;
+    let mounted = true;
+    const initBanner = async () => {
+      try {
+        await AdMob.initialize({
+          testingDevices: ['EMULATOR'],
+        });
+        if (!mounted) return;
+        const options: BannerAdOptions = {
+          adId: ADMOB_CONFIG.bannerAdUnitId,
+          position: BannerAdPosition.BOTTOM_CENTER,
+          margin: 56, // avoids overlap with bottom navigation bar
+          isTesting: ADMOB_CONFIG.testing,
+        };
+        await AdMob.showBanner(options);
+      } catch (err) {
+        console.warn('AdMob banner initialization error:', err);
+      }
+    };
+    void initBanner();
+    return () => {
+      mounted = false;
+      if (isNativeApp) {
+        void AdMob.hideBanner().catch(() => {});
+      }
+    };
+  }, [isNativeApp]);
+
   // Phase 4D: Rewarded Ad Simulation Playback Timer
   useEffect(() => {
     let timer: any;
@@ -1028,11 +1012,7 @@ export default function App() {
     } catch {}
   }, [categories]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('tedbeera_percentages', JSON.stringify(categoryPercentages));
-    } catch {}
-  }, [categoryPercentages]);
+
 
   useEffect(() => {
     try {
@@ -1063,6 +1043,63 @@ export default function App() {
       setDailyCompleted(false);
     }
   }, []);
+
+  const [isModalSpeaking, setIsModalSpeaking] = useState(false);
+  const modalSpeechPlayerRef = useRef<EgyptianRecipeSpeechPlayer | null>(null);
+  if (!modalSpeechPlayerRef.current) {
+    modalSpeechPlayerRef.current = new EgyptianRecipeSpeechPlayer(microphonePermission);
+  }
+
+  useEffect(() => {
+    let listener: { remove(): Promise<void> | void } | undefined;
+    if (isNativeApp) {
+      void microphonePermission.addListener('speechPlaybackStatus', (event) => {
+        if (event.status === 'completed' || event.status === 'stopped' || event.status === 'error') {
+          setIsModalSpeaking(false);
+        } else if (event.status === 'speaking') {
+          setIsModalSpeaking(true);
+        }
+      }).then((handle) => {
+        listener = handle;
+      });
+    }
+    return () => {
+      void listener?.remove();
+      void modalSpeechPlayerRef.current?.stop();
+    };
+  }, [isNativeApp]);
+
+  const stopSelectedRecipeSpeech = async () => {
+    await modalSpeechPlayerRef.current?.stop();
+    setIsModalSpeaking(false);
+  };
+
+  const closeSelectedRecipeModal = () => {
+    void stopSelectedRecipeSpeech();
+    setSelectedRecipeModal(null);
+  };
+
+  const speakSelectedRecipe = async (recipe: Recipe) => {
+    const ingredientLines = recipe.ingredients.map((ing) => {
+      const scaled = getScaledIngredient(ing, recipe.baseServings);
+      return `${ing.name} ${scaled.text}`;
+    });
+    const segments = buildEgyptianRecipeSpeechSegments(
+      recipe.name,
+      familySize,
+      ingredientLines,
+      recipe.steps
+    );
+    await modalSpeechPlayerRef.current?.speakSegments(segments, {
+      isNative: isNativeApp,
+      onStart: () => setIsModalSpeaking(true),
+      onEnd: () => setIsModalSpeaking(false),
+      onError: (msg) => {
+        setIsModalSpeaking(false);
+        showToast(msg);
+      }
+    });
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -1390,64 +1427,24 @@ export default function App() {
     showToast(`تمت إضافة "${normalizedName}" لقائمة النواقص 🛒`);
   };
 
-  // ==========================================
-  // Strict 100% Budget Redistribution Engine
-  // ==========================================
-  const parsedBudgetAmount = Math.max(0, isNaN(parseFloat(budgetAmount)) ? 0 : parseFloat(budgetAmount));
 
-  const redistributePercentages = (targetIndex: number, newPct: number, current: number[]): number[] => {
-    const size = current.length;
-    if (size <= 1 || targetIndex < 0 || targetIndex >= size) return current;
 
-    const clamped = Math.max(0, Math.min(100, Math.round(newPct)));
-    const result = [...current];
-    result[targetIndex] = clamped;
-
-    const remaining = 100 - clamped;
-    const otherIndices = current.map((_, i) => i).filter(i => i !== targetIndex);
-    const otherSum = otherIndices.reduce((acc, i) => acc + Math.max(0, current[i]), 0);
-
-    if (otherSum > 0) {
-      let running = 0;
-      for (let i = 0; i < otherIndices.length - 1; i++) {
-        const idx = otherIndices[i];
-        const ratio = current[idx] / otherSum;
-        const alloc = Math.max(0, Math.min(remaining, Math.round(ratio * remaining)));
-        result[idx] = alloc;
-        running += alloc;
-      }
-      const lastIdx = otherIndices[otherIndices.length - 1];
-      result[lastIdx] = Math.max(0, remaining - running);
-    } else {
-      const base = Math.floor(remaining / otherIndices.length);
-      let rem = remaining % otherIndices.length;
-      for (const idx of otherIndices) {
-        result[idx] = base + (rem > 0 ? 1 : 0);
-        if (rem > 0) rem--;
-      }
-    }
-
-    // Exact 100% invariant check
-    const diff = 100 - result.reduce((a, b) => a + b, 0);
-    if (diff !== 0) {
-      const adjustIdx = otherIndices[0] ?? targetIndex;
-      result[adjustIdx] = Math.max(0, result[adjustIdx] + diff);
-    }
-
-    return result;
+  const handleUpdateAllocation = (catId: string, deltaOrValue: number, isAbsolute = false) => {
+    setCategoryAllocations(prev => {
+      const current = prev[catId] ?? 0;
+      const nextVal = isAbsolute ? Math.max(0, deltaOrValue) : Math.max(0, current + deltaOrValue);
+      return { ...prev, [catId]: nextVal };
+    });
   };
 
-  const handleUpdatePercentage = (index: number, newPct: number) => {
-    const next = redistributePercentages(index, newPct, categoryPercentages);
-    setCategoryPercentages(next);
-  };
-
-  const handleApplyPreset = (presetPcts: number[]) => {
-    if (presetPcts.length !== categories.length) {
-      showToast('النموذج مخصص للتوزيع الخماسي القياسي');
-      return;
-    }
-    setCategoryPercentages(presetPcts);
+  const handleApplyPresetAmounts = (percentages: number[]) => {
+    const base = parseFloat(budgetAmount) || 2500;
+    const next: Record<string, number> = {};
+    categories.forEach((cat, idx) => {
+      const pct = percentages[idx] || 10;
+      next[cat.id] = Math.round((base * pct) / 100);
+    });
+    setCategoryAllocations(next);
     showToast('تم تطبيق نموذج الميزانية بنجاح ✅');
   };
 
@@ -1467,17 +1464,14 @@ export default function App() {
     const newCats = [...categories, newCat];
     setCategories(newCats);
 
-    // Rebalance percentages to accommodate new category strictly at 100%
-    const count = newCats.length;
-    const basePct = Math.floor(100 / count);
-    const rem = 100 % count;
-    const initialPcts = newCats.map((_, i) => basePct + (i < rem ? 1 : 0));
-    setCategoryPercentages(initialPcts);
+    const base = parseFloat(budgetAmount) || 2500;
+    const addedAllocation = Math.round(base * 0.1);
+    setCategoryAllocations(prev => ({ ...prev, [newCat.id]: addedAllocation }));
 
     setNewCatName('');
     setNewCatTip('');
     setIsAddCategoryModalOpen(false);
-    showToast(`تمت إضافة بند "${newCat.name}" وإعادة التوزيع بنسبة 100% بالتمام 🎉`);
+    showToast(`تمت إضافة بند "${newCat.name}" بنجاح 🎉`);
   };
 
   // Budget calculations use the active salary cycle, not every historical expense.
@@ -1493,8 +1487,8 @@ export default function App() {
 
   // Budget Reconciled Breakdown & Calculations
   const budgetBreakdown = useMemo(() => {
-    return reconcileBudgetAllocations(parsedBudgetAmount, categoryPercentages, categories, payCycleExpenses);
-  }, [parsedBudgetAmount, categoryPercentages, categories, payCycleExpenses]);
+    return reconcileDirectBudgetAllocations(categories, categoryAllocations, payCycleExpenses);
+  }, [categories, categoryAllocations, payCycleExpenses]);
 
   const totalSpentAll = useMemo(() => {
     return payCycleExpenses.reduce((acc, curr) => {
@@ -1726,7 +1720,6 @@ export default function App() {
         familySize,
         budgetAmount,
         categories,
-        categoryPercentages,
         expenses,
         shoppingItems,
         savedRecipeIds,
@@ -1821,7 +1814,6 @@ export default function App() {
       familySize,
       budgetAmount,
       categories,
-      categoryPercentages,
       expenses,
       shoppingItems,
       savedRecipeIds,
@@ -1844,7 +1836,6 @@ export default function App() {
       setFamilySize(d.familySize);
       setBudgetAmount(d.budgetAmount);
       setCategories(d.categories);
-      setCategoryPercentages(d.categoryPercentages);
       setExpenses(d.expenses);
       setShoppingItems(d.shoppingItems);
       setSavedRecipeIds(d.savedRecipeIds);
@@ -1860,7 +1851,6 @@ export default function App() {
       localStorage.setItem('tedbeera_family_size', String(d.familySize));
       localStorage.setItem('tedbeera_budget_amount', d.budgetAmount);
       localStorage.setItem('tedbeera_categories', JSON.stringify(d.categories));
-      localStorage.setItem('tedbeera_percentages', JSON.stringify(d.categoryPercentages));
       localStorage.setItem('tedbeera_expenses', JSON.stringify(d.expenses));
       localStorage.setItem('tedbeera_shopping_items', JSON.stringify(d.shoppingItems));
       localStorage.setItem('tedbeera_saved_recipes', JSON.stringify(d.savedRecipeIds));
@@ -1936,7 +1926,6 @@ export default function App() {
       setFamilySize(preRestoreSnapshot.familySize);
       setBudgetAmount(preRestoreSnapshot.budgetAmount);
       setCategories(preRestoreSnapshot.categories);
-      setCategoryPercentages(preRestoreSnapshot.categoryPercentages);
       setExpenses(preRestoreSnapshot.expenses);
       setShoppingItems(preRestoreSnapshot.shoppingItems);
       setSavedRecipeIds(preRestoreSnapshot.savedRecipeIds);
@@ -1973,7 +1962,6 @@ export default function App() {
     setFamilySize(4);
     setBudgetAmount('2500');
     setCategories(DEFAULT_BUDGET_CATEGORIES);
-    setCategoryPercentages(DEFAULT_BUDGET_CATEGORIES.map(c => c.defaultPct));
     setPaydayDay(null);
     setIsWeeklyPlanUnlocked(false);
     setIsDailyReminderEnabled(false);
@@ -2059,7 +2047,7 @@ export default function App() {
         </header>
 
         {/* Scrollable Screen Content with shared layout clearance ensuring 70-90px breathing room */}
-        <div className={`tadbeera-screen-content flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 bg-[#FBF8F1] [&>*]:max-w-2xl [&>*]:mx-auto [&>*]:w-full ${getBottomScrollPaddingClass(adStatus)} ${isNativeApp ? "pb-[calc(6rem+env(safe-area-inset-bottom))]" : "pb-[calc(1.5rem+env(safe-area-inset-bottom))]"}`}>
+        <div className={`tadbeera-screen-content flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 bg-[#FBF8F1] [&>*]:max-w-2xl [&>*]:mx-auto [&>*]:w-full ${isNativeApp ? "pb-[calc(7.5rem+env(safe-area-inset-bottom))]" : "pb-[calc(1.5rem+env(safe-area-inset-bottom))]"}`}>
 
 
               {activeTab === 'home' && (
@@ -2067,9 +2055,9 @@ export default function App() {
                   <div className="rounded-[26px] bg-gradient-to-br from-[#667B58] via-[#758765] to-[#526748] text-white p-4 shadow-sm">
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <span className="text-[11px] text-[#F4EAD5] font-semibold">بيتك في إيدك 🌿</span>
-                        <h2 className="text-xl font-extrabold mt-1">أهلاً بيك في تدبيرة</h2>
-                        <p className="text-[11px] text-white/85 mt-1 leading-5">كل احتياجات بيتك اليومية في مكان واحد.</p>
+                        <span className="text-[11px] text-[#F4EAD5] font-semibold">بيتكم في إيدكم 🌿</span>
+                        <h2 className="text-xl font-extrabold mt-1">أهلاً بيكم في تدبيرة</h2>
+                        <p className="text-[11px] text-white/85 mt-1 leading-5">كل احتياجات بيتكم اليومية في مكان واحد.</p>
                       </div>
                       <div className="shrink-0 rounded-2xl bg-white/15 px-3 py-2 text-center">
                         <Users className="w-5 h-5 mx-auto mb-1" />
@@ -2079,11 +2067,11 @@ export default function App() {
                     </div>
                   </div>
                   <div className="flex items-end justify-between gap-2">
-                    <div><h3 className="font-extrabold text-sm text-[#454A3C]">تحتاجي إيه النهارده؟</h3><p className="text-[10px] text-[#8A887C] mt-0.5">اختاري القسم وابدئي على طول</p></div>
+                    <div><h3 className="font-extrabold text-sm text-[#454A3C]">تحبوا نبدأ بإيه النهارده؟</h3><p className="text-[10px] text-[#8A887C] mt-0.5">اختاروا القسم وابدأوا على طول</p></div>
                     <span className="text-[10px] text-[#8A887C]">اختصارات سريعة</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
-                    <button type="button" onClick={() => setActiveTab('food')} className="text-right rounded-2xl border border-[#EEDFD4] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F7EDE4] text-[#A66D4C] flex items-center justify-center"><Utensils className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">المطبخ والوصفات</b><small className="block text-[10px] text-[#969184] mt-0.5">اختاري طبخة النهارده</small></button>
+                    <button type="button" onClick={() => setActiveTab('food')} className="text-right rounded-2xl border border-[#EEDFD4] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F7EDE4] text-[#A66D4C] flex items-center justify-center"><Utensils className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">المطبخ والوصفات</b><small className="block text-[10px] text-[#969184] mt-0.5">اختاروا طبخة النهارده</small></button>
                     <button type="button" onClick={() => setActiveTab('saved')} className="text-right rounded-2xl border border-[#E9E1D3] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F4EEE2] text-[#98764C] flex items-center justify-center"><ShoppingCart className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">قائمة المشتريات</b><small className="block text-[10px] text-[#969184] mt-0.5">{shoppingItems.filter(item => !item.isChecked).length} أصناف لسه محتاجة تتجاب</small></button>
                     <button type="button" onClick={() => setActiveTab('budget')} className="text-right rounded-2xl border border-[#E2E8DC] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#EEF1E8] text-[#667B58] flex items-center justify-center"><Wallet className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">ميزانية البيت</b><small className="block text-[10px] text-[#969184] mt-0.5">المبلغ المحدد: {budgetAmount || '—'} ج.م</small></button>
                     <button type="button" onClick={() => setActiveTab('household')} className="text-right rounded-2xl border border-[#E8E2D5] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F0EEE7] text-[#857B60] flex items-center justify-center"><Home className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">إدارة البيت</b><small className="block text-[10px] text-[#969184] mt-0.5">المخزون والمهام المنزلية</small></button>
@@ -2113,7 +2101,7 @@ export default function App() {
                     </button>
                   </div>
                   <div className="rounded-2xl border border-[#E8E1D3] bg-[#F3EBDD] p-3.5 space-y-2.5">
-                    <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-extrabold text-[#66563F]">💡 تدبيرة اليوم</span><span className={dailyCompleted ? "text-[10px] font-bold text-[#526748]" : "text-[10px] font-bold text-[#8A704D]"}>{dailyCompleted ? "أنجزتي تحدي النهارده ✓" : "خطوة صغيرة لبيت أهدى"}</span></div>
+                    <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-extrabold text-[#66563F]">💡 تدبيرة اليوم</span><span className={dailyCompleted ? "text-[10px] font-bold text-[#526748]" : "text-[10px] font-bold text-[#8A704D]"}>{dailyCompleted ? "أنجزتوا تحدي النهارده ✓" : "خطوة صغيرة لبيت أهدى"}</span></div>
                     <p className="text-[11px] text-[#796B56] leading-5">{todayChallenge.title}</p>
                     <div className="flex flex-wrap items-center gap-2 pt-0.5">
                       <button
@@ -2121,7 +2109,7 @@ export default function App() {
                         onClick={() => { setDailyTipsViewMode('all'); setActiveTab('daily'); }}
                         className="min-h-[40px] rounded-xl bg-[#1E5631] hover:bg-[#2E7D32] text-white px-3 py-1.5 text-[11px] font-bold transition whitespace-nowrap"
                       >
-                        {dailyCompleted ? 'راجعي أفكار التوفير' : 'اعرفي تفاصيل تدبيرة اليوم'}
+                        {dailyCompleted ? 'راجعوا أفكار التوفير' : 'شوفوا تفاصيل تدبيرة اليوم'}
                       </button>
                       <button
                         type="button"
@@ -2139,13 +2127,7 @@ export default function App() {
                 <ErrorBoundary fallbackTitle="تعذر تحميل شاشة إدارة البيت">
                   <React.Suspense fallback={<div className="rounded-2xl bg-white border border-[#E8E0D1] p-4 text-center text-xs text-[#667B58]">بنجهز إدارة البيت…</div>}>
                     <HouseholdHub
-                      onAddLowStockToShopping={handleAddLowStockToShopping}
-                      budgetSummary={{
-                        totalBudget: parsedBudgetAmount,
-                        totalSpent: totalSpentAll,
-                        totalRemaining: totalRemainingAll
-                      }}
-                      onOpenBudget={() => setActiveTab('budget')}
+                      onNotify={handleNotify}
                     />
                   </React.Suspense>
                 </ErrorBoundary>
@@ -2291,7 +2273,22 @@ export default function App() {
                                   <div key={recipe.id} className="flex w-full items-center gap-2 rounded-2xl border border-gray-200 bg-white p-2.5 shadow-sm transition hover:border-emerald-300">
                                     <button type="button" onClick={() => setSelectedRecipeModal(recipe)} className="flex min-w-0 flex-1 items-center gap-3 text-right">
                                       <span className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-[#F1F5EC]">
-                                        {recipe.imageUrl && !brokenImages[recipe.id] ? <img src={recipe.imageUrl} alt={recipe.name} loading="lazy" onError={() => handleImageError(recipe.id)} className="h-full w-full object-cover" /> : <SvgIllustration type={recipe.svgFallbackIcon || 'koshari'} />}
+                                        {recipe.imageUrl && !brokenImages[recipe.id] ? (
+                                          <img
+                                            src={recipe.imageUrl}
+                                            alt={recipe.name}
+                                            loading="lazy"
+                                            referrerPolicy="no-referrer"
+                                            onError={() => handleImageError(recipe.id)}
+                                            className="h-full w-full object-cover"
+                                          />
+                                        ) : (
+                                          <SvgIllustration
+                                            type={recipe.svgFallbackIcon || 'koshari'}
+                                            recipeId={recipe.id}
+                                            recipeName={recipe.name}
+                                          />
+                                        )}
                                       </span>
                                       <span className="min-w-0 flex-1">
                                         <strong className="block truncate text-sm text-gray-900">{recipe.name}</strong>
@@ -3031,14 +3028,14 @@ export default function App() {
                     <div className="flex items-center justify-between text-xs px-1">
                       <span className="font-bold text-gray-700">نماذج ميزانية مقترحة:</span>
                       <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                        ✅ المجموع: 100% بالتمام
+                        ✅ الميزانية موزعة بالكامل
                       </span>
                     </div>
                     <div className="flex gap-1.5 overflow-x-auto pb-1">
                       {BUDGET_PRESETS.map((preset, idx) => (
                         <button
                           key={idx}
-                          onClick={() => handleApplyPreset(preset.percentages)}
+                          onClick={() => handleApplyPresetAmounts(preset.percentages)}
                           className="bg-white border border-gray-200 hover:border-[#626B49] text-gray-700 text-xs px-2.5 py-1.5 rounded-xl font-bold whitespace-nowrap shadow-xs transition"
                         >
                           {preset.name}
@@ -3973,7 +3970,7 @@ export default function App() {
                   <Bookmark className={`h-4 w-4 ${savedRecipeIds.includes(selectedRecipeModal.id) ? 'fill-[#765B3A]' : ''}`} />
                 </button>
                 <button
-                  onClick={() => setSelectedRecipeModal(null)}
+                  onClick={closeSelectedRecipeModal}
                   className="text-gray-400 hover:text-gray-600 text-lg font-bold p-1"
                   aria-label="إغلاق"
                 >
@@ -3982,9 +3979,42 @@ export default function App() {
               </div>
             </div>
 
-            <p className="text-[11px] text-gray-500 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
-              🏷️ تكلفة تقديرية وغير ملزمة محسوبة لـ {familySize} أفراد تختلف حسب الأسعار الموسمية بالأسواق المصرية.
-            </p>
+            {/* 100% Offline Visual Header (Real image if reachable, seamless dish artwork fallback) */}
+            <div className="overflow-hidden rounded-2xl border border-[#E4DECF] bg-[#F3EBDD]">
+              {selectedRecipeModal.imageUrl && !brokenImages[selectedRecipeModal.id] ? (
+                <img
+                  src={selectedRecipeModal.imageUrl}
+                  alt={selectedRecipeModal.name}
+                  referrerPolicy="no-referrer"
+                  onError={() => handleImageError(selectedRecipeModal.id)}
+                  className="h-44 w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-40 w-full items-center justify-center p-3">
+                  <SvgIllustration
+                    type={selectedRecipeModal.svgFallbackIcon || 'koshary'}
+                    recipeId={selectedRecipeModal.id}
+                    recipeName={selectedRecipeModal.name}
+                    className="h-32 w-32"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] text-gray-500 bg-gray-50 p-2.5 rounded-xl border border-gray-100 flex-1">
+                🏷️ تكلفة تقديرية محسوبة لـ {familySize} أفراد تختلف حسب الأسعار بالأسواق المصرية.
+              </p>
+              <button
+                type="button"
+                onClick={() => void (isModalSpeaking ? stopSelectedRecipeSpeech() : speakSelectedRecipe(selectedRecipeModal))}
+                className={`shrink-0 inline-flex min-h-[42px] items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-white transition ${
+                  isModalSpeaking ? 'bg-red-600 hover:bg-red-700' : 'bg-[#1E5631] hover:bg-[#2E7D32]'
+                }`}
+              >
+                {isModalSpeaking ? <><VolumeX className="w-4 h-4" /> إيقاف</> : <><Volume2 className="w-4 h-4" /> اسمع الوصفة</>}
+              </button>
+            </div>
 
             {/* Ingredients Scaled */}
             <div>
@@ -4048,7 +4078,7 @@ export default function App() {
                     !selectedIngredients.some(sel => ing.name.includes(sel) || sel.includes(ing.name))
                   );
                   handleAddMissingToShopping(missing, selectedRecipeModal.baseServings);
-                  setSelectedRecipeModal(null);
+                  closeSelectedRecipeModal();
                 }}
                 className="flex-1 bg-white border border-[#626B49] text-[#626B49] font-bold py-2.5 rounded-xl text-xs hover:bg-[#F1F3EA] transition flex items-center justify-center gap-1"
               >
@@ -4056,7 +4086,7 @@ export default function App() {
                 <span>إضافة النواقص لقائمة المشتريات</span>
               </button>
               <button
-                onClick={() => setSelectedRecipeModal(null)}
+                onClick={closeSelectedRecipeModal}
                 className="bg-[#626B49] text-white font-bold py-2.5 px-4 rounded-xl text-xs hover:bg-[#1E5631] transition"
               >
                 تمام، فهمت

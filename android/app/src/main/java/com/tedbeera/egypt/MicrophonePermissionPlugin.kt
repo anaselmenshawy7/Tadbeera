@@ -164,14 +164,48 @@ class MicrophonePermissionPlugin : Plugin() {
                 return
             }
         }
-        engine.setSpeechRate(0.82f)
-        engine.setPitch(0.96f)
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                val arabicVoices = engine.voices?.filter { voice ->
+                    voice.locale?.language?.equals("ar", ignoreCase = true) == true
+                }.orEmpty()
+                val preferredVoice = arabicVoices.maxByOrNull { voice ->
+                    var score = 0
+                    val country = voice.locale?.country?.uppercase().orEmpty()
+                    val name = voice.name.lowercase()
+                    if (country == "EG") score += 120
+                    else if (country in listOf("SA", "LB", "AE", "JO")) score += 45
+                    if (name.contains("female") || name.contains("hoda") || name.contains("salma") ||
+                        name.contains("laila") || name.contains("mariam") || name.contains("eg")) score += 75
+                    if (name.contains("wavenet") || name.contains("neural") || name.contains("network")) score += 35
+                    if (name.contains("male") && !name.contains("female")) score -= 50
+                    if (voice.quality >= android.speech.tts.Voice.QUALITY_HIGH) score += 20
+                    score
+                }
+                if (preferredVoice != null) {
+                    engine.voice = preferredVoice
+                }
+            }
+        } catch (_: Exception) {
+            // Keep default Arabic voice if inspecting voices fails on OEM TTS engines
+        }
+
+        engine.setSpeechRate(0.93f)
+        engine.setPitch(1.08f)
+        val segments = text.split(Regex("(?<=[.!؟\\n])\\s+|\\n+"))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .ifEmpty { listOf(text.trim()) }
+        val finalUtteranceId = "tadbeera-recipe-end-${System.currentTimeMillis()}"
+
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
                 notifyListeners("speechPlaybackStatus", JSObject().put("status", "speaking"))
             }
             override fun onDone(utteranceId: String?) {
-                notifyListeners("speechPlaybackStatus", JSObject().put("status", "completed"))
+                if (utteranceId == finalUtteranceId) {
+                    notifyListeners("speechPlaybackStatus", JSObject().put("status", "completed"))
+                }
             }
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
@@ -181,7 +215,20 @@ class MicrophonePermissionPlugin : Plugin() {
                 notifyListeners("speechPlaybackStatus", JSObject().put("status", "error"))
             }
         })
-        val result = engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "tadbeera-recipe-${System.currentTimeMillis()}")
+
+        var result = TextToSpeech.SUCCESS
+        segments.forEachIndexed { index, segment ->
+            val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+            val isLast = index == segments.lastIndex
+            val utteranceId = if (isLast) finalUtteranceId else "tadbeera-recipe-$index-${System.currentTimeMillis()}"
+            val speakResult = engine.speak(segment, queueMode, null, utteranceId)
+            if (speakResult == TextToSpeech.ERROR) {
+                result = TextToSpeech.ERROR
+            } else if (!isLast && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                engine.playSilentUtterance(200L, TextToSpeech.QUEUE_ADD, "tadbeera-pause-$index")
+            }
+        }
+
         if (result == TextToSpeech.ERROR) {
             pendingSpeechCall = null
             call.reject("Unable to start Arabic speech playback")

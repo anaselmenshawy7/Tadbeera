@@ -35,6 +35,7 @@ export const BREAKFAST_REMINDER_ID = 101;
 export const LUNCH_REMINDER_ID = 102;
 export const DINNER_REMINDER_ID = 103;
 export const DAILY_REMINDER_CHANNEL_ID = 'tedbeera_meal_reminders';
+export const CUSTOM_REMINDER_CHANNEL_ID = 'tedbeera_custom_reminders';
 export const DEFAULT_REMINDER_HOUR = 8;
 export const DEFAULT_REMINDER_MINUTE = 0;
 export const DEFAULT_LUNCH_HOUR = 13;
@@ -55,6 +56,19 @@ export interface LocalReminderConfig {
   body: string;
 }
 
+export interface OneOffNotificationOptions {
+  id: number;
+  title: string;
+  body: string;
+  triggerAt: Date;
+}
+
+export interface OneOffNotificationResult {
+  scheduled: boolean;
+  mode: 'native' | 'web' | 'in-app';
+  message: string;
+}
+
 export interface LocalNotificationService {
   isPluginAvailable(): boolean;
   checkPermission(): Promise<NotificationPermissionStatus>;
@@ -63,6 +77,8 @@ export interface LocalNotificationService {
   scheduleDailyReminder(hour?: number, minute?: number): Promise<{ success: boolean; message: string }>;
   cancelDailyReminder(): Promise<{ success: boolean; message: string }>;
   sendTestNotification(): Promise<{ success: boolean; message: string }>;
+  scheduleOneOffNotification(options: OneOffNotificationOptions): Promise<OneOffNotificationResult>;
+  cancelOneOffNotification(id: number): Promise<void>;
   getStoredConfig(): LocalReminderConfig;
   saveStoredConfig(config: Partial<LocalReminderConfig>): void;
 }
@@ -340,6 +356,117 @@ class CapacitorLocalNotificationServiceImpl implements LocalNotificationService 
         success: false,
         message: error instanceof Error ? error.message : 'تعذر إلغاء تذكيرات الوجبات.',
       };
+    }
+  }
+
+  private webTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
+  async scheduleOneOffNotification(options: OneOffNotificationOptions): Promise<OneOffNotificationResult> {
+    const { id, title, body, triggerAt } = options;
+    await this.cancelOneOffNotification(id);
+
+    const delayMs = triggerAt.getTime() - Date.now();
+    if (!Number.isFinite(delayMs) || delayMs <= 0) {
+      return {
+        scheduled: false,
+        mode: 'in-app',
+        message: 'الميعاد المحدد للتنبيه عدّى بالفعل.',
+      };
+    }
+
+    if (this.isLocalNotificationsAvailable()) {
+      try {
+        const perm = await this.checkPermission();
+        if (perm !== 'granted') {
+          const granted = await this.requestPermission();
+          if (!granted) {
+            return {
+              scheduled: false,
+              mode: 'in-app',
+              message: 'التنبيه محفوظ، بس محتاج تسمحي بالإشعارات من إعدادات الموبايل علشان يوصلك.',
+            };
+          }
+        }
+        await LocalNotifications.createChannel({
+          id: CUSTOM_REMINDER_CHANNEL_ID,
+          name: 'تذكيرات ومهام البيت',
+          description: 'تنبيهات تدبيرة المخصصة ومهام البيت',
+          importance: 4,
+          visibility: 1,
+        });
+        await LocalNotifications.schedule({
+          notifications: [{
+            id,
+            title,
+            body,
+            schedule: { at: triggerAt, allowWhileIdle: true },
+            channelId: CUSTOM_REMINDER_CHANNEL_ID,
+            extra: { source: 'tadbeera_custom_reminder', reminderId: id },
+          }],
+        });
+        return {
+          scheduled: true,
+          mode: 'native',
+          message: 'تم جدولة الإشعار على الموبايل بنجاح 🔔',
+        };
+      } catch (error) {
+        console.warn('Tadbeera custom notification native schedule error:', error);
+      }
+    }
+
+    // Web browser Notification + in-app fallback timer
+    let hasWebPermission = false;
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (window.Notification.permission === 'granted') {
+        hasWebPermission = true;
+      } else if (window.Notification.permission === 'default') {
+        try {
+          const res = await window.Notification.requestPermission();
+          hasWebPermission = res === 'granted';
+        } catch {
+          hasWebPermission = false;
+        }
+      }
+    }
+
+    if (typeof window !== 'undefined' && delayMs <= 2_147_483_647) {
+      const timer = setTimeout(() => {
+        this.webTimers.delete(id);
+        if (hasWebPermission && 'Notification' in window && window.Notification.permission === 'granted') {
+          try {
+            new window.Notification(title, { body });
+          } catch {
+            // Fall through to in-app alert event
+          }
+        }
+        window.dispatchEvent(
+          new CustomEvent('tadbeeraCustomReminderAlert', { detail: { id, title, body } })
+        );
+      }, delayMs);
+      this.webTimers.set(id, timer);
+    }
+
+    return {
+      scheduled: true,
+      mode: hasWebPermission ? 'web' : 'in-app',
+      message: hasWebPermission
+        ? 'تم جدولة إشعار المتصفح بنجاح 🔔'
+        : 'تم حفظ التنبيه وهيفكرك جوه التطبيق في ميعاده 🔔',
+    };
+  }
+
+  async cancelOneOffNotification(id: number): Promise<void> {
+    const existingTimer = this.webTimers.get(id);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      this.webTimers.delete(id);
+    }
+    if (this.isLocalNotificationsAvailable()) {
+      try {
+        await LocalNotifications.cancel({ notifications: [{ id }] });
+      } catch {
+        // Ignore if notification ID was already fired or absent
+      }
     }
   }
 

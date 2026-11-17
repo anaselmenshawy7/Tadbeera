@@ -70,14 +70,14 @@ export const DEFAULT_BUDGET_CATEGORIES: BudgetCategoryDef[] = [
   {
     id: 'food',
     name: 'طعام وتموين',
-    defaultPct: 40,
+    defaultPct: 45,
     tip: 'سوق الخضار الأسبوعي، أساسيات البقالة، واللحوم/البروتين.',
     iconName: 'utensils'
   },
   {
     id: 'bills',
     name: 'فواتير والتزامات',
-    defaultPct: 20,
+    defaultPct: 25,
     tip: 'كهرباء، غاز، مياه، اشتراك نت، وباقات الموبايل.',
     iconName: 'receipt'
   },
@@ -91,39 +91,29 @@ export const DEFAULT_BUDGET_CATEGORIES: BudgetCategoryDef[] = [
   {
     id: 'household',
     name: 'مستلزمات البيت',
-    defaultPct: 15,
+    defaultPct: 10,
     tip: 'منظفات، صيانة خفيفة، أدوات وأدوية صيدلية البيت.',
     iconName: 'home'
   },
   {
     id: 'savings',
-    name: 'ادخار وطوارئ',
-    defaultPct: 10,
-    tip: 'مبلغ طوارئ في جنب يمنع الاستدانة في الظروف المفاجئة.',
+    name: 'تحويشة وطوارئ',
+    defaultPct: 5,
+    tip: 'مبلغ تحويشة في جنب يمنع الاستدانة في الظروف المفاجئة.',
     iconName: 'piggy'
   }
 ];
 
 export const BUDGET_PRESETS = [
   {
-    name: 'نموذج متوازن شهري',
-    description: 'توزيع قياسي مناسب لمعظم الأسر المصرية.',
-    percentages: [40, 20, 15, 15, 10]
+    name: 'تقسيمة متوازنة',
+    description: 'تقسيمة متوازنة لمصاريف البيت الشهرية.',
+    percentages: [45, 25, 15, 10, 5]
   },
   {
-    name: 'نموذج توفير مكثف',
-    description: 'رفع نسبة الادخار مع ترشيد النثريات.',
+    name: 'تقسيمة توفير',
+    description: 'تركيز أكبر على التحويش وتقليل المصاريف الجانبية.',
     percentages: [35, 20, 15, 10, 20]
-  },
-  {
-    name: 'نموذج مواسم ومدارس',
-    description: 'تركيز على مستلزمات البيت ومصاريف الأولاد.',
-    percentages: [30, 20, 10, 30, 10]
-  },
-  {
-    name: 'نموذج ترشيد الفواتير',
-    description: 'مخصص لأوقات ذروة الفواتير والصيف.',
-    percentages: [40, 25, 15, 10, 10]
   }
 ];
 

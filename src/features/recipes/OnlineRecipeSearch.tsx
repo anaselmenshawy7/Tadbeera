@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { ArrowRight, Mic, MicOff, Volume2, VolumeX, Search } from 'lucide-react';
+import { ArrowRight, Mic, MicOff, Volume2, VolumeX, Search, X } from 'lucide-react';
 import { normalizeArabicSearchTerm as normalize, matchesArabicSearchAlias } from './arabicSearch';
 import { isRelevantRecipe } from './recipeValidation';
 import { RECIPES, type Recipe } from '../../data/seedData';
+import { EgyptianRecipeSpeechPlayer, buildEgyptianRecipeSpeechSegments } from './recipeSpeech';
+import { RecipeIllustration } from '../../components/RecipeIllustration';
 
 interface RecipeVoicePlugin {
   request(): Promise<{ granted: boolean }>;
@@ -695,6 +698,16 @@ export function detectMealDbCuisineTier(strArea?: string, title = ''): CuisineTi
   return 'international';
 }
 
+function getCoreRecipeKey(title: string): string {
+  const norm = normalize(title)
+    .replace(/(?:علي|على)\s+الطريق[هة]\s+\S+(?:\s+\S+)?/g, '')
+    .replace(/بالطريق[هة]\s+\S+(?:\s+\S+)?/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const tokens = norm.split(/\s+/).filter(Boolean);
+  return tokens.slice(0, 3).join('_') || norm;
+}
+
 export function sortAndDedupeOnlineRecipes<T extends { title: string; cuisine?: CuisineTier }>(recipes: T[]): T[] {
   const sorted = [...recipes].sort((a, b) => {
     const rankA = CUISINE_PRIORITY[a.cuisine || 'international'];
@@ -704,9 +717,11 @@ export function sortAndDedupeOnlineRecipes<T extends { title: string; cuisine?: 
   const seen = new Set<string>();
   const deduped: T[] = [];
   for (const recipe of sorted) {
-    const key = normalize(recipe.title);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
+    const exactKey = normalize(recipe.title);
+    const coreKey = getCoreRecipeKey(recipe.title);
+    if (!exactKey || seen.has(exactKey) || seen.has(coreKey)) continue;
+    seen.add(exactKey);
+    seen.add(coreKey);
     deduped.push(recipe);
   }
   return deduped;
@@ -875,8 +890,14 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceMessage, setVoiceMessage] = useState('');
   const [speaking, setSpeaking] = useState(false);
+  const [brokenImages, setBrokenImages] = useState<Record<number, boolean>>({});
   const recognitionRef = useRef<any>(null);
   const voiceListenersRef = useRef<Array<{ remove(): Promise<void> }>>([]);
+  const speechPlayerRef = useRef<EgyptianRecipeSpeechPlayer | null>(null);
+
+  if (!speechPlayerRef.current) {
+    speechPlayerRef.current = new EgyptianRecipeSpeechPlayer(recipeVoice);
+  }
 
   useEffect(() => {
     try { localStorage.setItem(SAVED_KEY, JSON.stringify(saved)); } catch { /* storage may be full */ }
@@ -1050,7 +1071,6 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
       }
 
       setResults(merged);
-      setSelected(merged[0]);
     } catch {
       const fallbackBundledMatches = findBundledEgyptianRecipes(term);
       const fallbackCuratedMatches = findCuratedLocalMatches(term, fallbackBundledMatches);
@@ -1060,7 +1080,6 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
       ]);
       if (fallbackLocalMatches.length) {
         setResults(fallbackLocalMatches);
-        setSelected(fallbackLocalMatches[0]);
       } else {
         setError('تعذر الاتصال بمكتبة الوصفات المجانية. تأكد من الإنترنت وحاول مرة أخرى؛ تقدر تستخدم الوصفات المحفوظة بدون اتصال.');
       }
@@ -1163,59 +1182,46 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
   };
 
   const stopRecipeSpeech = async () => {
-    try {
-      if (Capacitor.isNativePlatform()) await recipeVoice.stopSpeaking();
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
-    } catch { /* playback may already have stopped */ }
+    await speechPlayerRef.current?.stop();
     setSpeaking(false);
+  };
+
+  const closeSelectedModal = () => {
+    void stopRecipeSpeech();
+    setSelected(null);
   };
 
   const speakRecipe = async (recipe: OnlineRecipe) => {
     const sections = parseRecipeSections(recipe.extract, familySize, recipe.servings || 4);
-    const cleanForSpeech = (value: string) => value
-      .replace(/[•*_#]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .replace(/\bجم\b/g, 'جرام')
-      .replace(/\bمل\b/g, 'مليلتر')
-      .replace(/\bم ص\b/g, 'ملعقة صغيرة')
-      .replace(/\bم ك\b/g, 'ملعقة كبيرة')
-      .replace(/\b\d+\s*\/\s*\d+\b/g, ' ')
-      .trim();
-    const spokenText = [
-      `يلا نعمل ${cleanForSpeech(recipe.title)}.`,
-      `المقادير دي تكفي ${familySize} أفراد.`,
-      'تعالوا نجهز المكونات الأول.',
-      ...sections.ingredients.map(item => cleanForSpeech(item)),
-      'كده نبدأ طريقة التحضير، واحدة واحدة.',
-      ...sections.steps.map((step, index) => `أول حاجة، الخطوة رقم ${index + 1}: ${cleanForSpeech(step)}. وبعدها نروح للي بعدها.`),
-      'وبس كده، وصفتنا جاهزة. وبالهنا والشفا!',
-    ].filter(Boolean).join('، ');
-    try {
-      if (Capacitor.isNativePlatform()) {
-        await recipeVoice.speak({ text: spokenText });
-        setSpeaking(true);
-        return;
-      }
-      if (!('speechSynthesis' in window)) {
-        setVoiceMessage('تشغيل الصوت غير مدعوم على هذا الجهاز.');
-        return;
-      }
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(spokenText);
-      utterance.lang = 'ar-EG';
-      utterance.rate = 0.88;
-      utterance.onstart = () => setSpeaking(true);
-      utterance.onend = () => setSpeaking(false);
-      utterance.onerror = () => {
+    const segments = buildEgyptianRecipeSpeechSegments(
+      recipe.title,
+      familySize,
+      sections.ingredients,
+      sections.steps
+    );
+    await speechPlayerRef.current?.speakSegments(segments, {
+      isNative: Capacitor.isNativePlatform(),
+      onStart: () => setSpeaking(true),
+      onEnd: () => setSpeaking(false),
+      onError: (msg) => {
         setSpeaking(false);
-        setVoiceMessage('تعذر تشغيل الصوت. تأكد من تثبيت صوت عربي على الجهاز.');
-      };
-      window.speechSynthesis.speak(utterance);
-    } catch {
-      setSpeaking(false);
-      setVoiceMessage('تعذر تشغيل الصوت العربي. تأكد من وجود محرك تحويل النص إلى كلام وصوت عربي على الجهاز.');
-    }
+        setVoiceMessage(msg);
+      },
+    });
   };
+
+  useEffect(() => {
+    if (!selected) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        void speechPlayerRef.current?.stop();
+        setSpeaking(false);
+        setSelected(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selected]);
 
   useEffect(() => {
     let playbackListener: { remove(): Promise<void> } | undefined;
@@ -1227,12 +1233,11 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
     }
     return () => {
       try { recognitionRef.current?.stop?.(); } catch {}
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+      void speechPlayerRef.current?.stop();
       voiceListenersRef.current.forEach(listener => { void listener.remove(); });
       if (playbackListener) void playbackListener.remove();
       if (Capacitor.isNativePlatform()) {
         void recipeVoice.stopListening();
-        void recipeVoice.stopSpeaking();
       }
     };
   }, []);
@@ -1281,67 +1286,210 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
       {error && <p role="status" className="rounded-xl bg-amber-50 p-3 text-xs leading-6 text-amber-900">{error}</p>}
 
       {currentItems.length > 0 && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           {currentItems.map(item => {
             const badge = CUISINE_BADGE_META[item.cuisine || 'international'];
+            const hasImage = Boolean(item.imageUrl) && !brokenImages[item.pageId];
             return (
-              <button key={item.pageId} type="button" onClick={() => setSelected(item)}
-                className={`rounded-xl border p-3 text-right text-xs font-bold transition ${selected?.pageId === item.pageId ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 bg-gray-50'}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <span className="min-w-0 flex-1 leading-5">{item.title}</span>
-                  <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${badge.className}`}>
-                    {badge.label}
+              <button
+                key={item.pageId}
+                type="button"
+                onClick={() => setSelected(item)}
+                className={`flex items-center gap-3 rounded-2xl border p-3 text-right transition hover:border-emerald-400 active:scale-[0.99] ${
+                  selected?.pageId === item.pageId
+                    ? 'border-emerald-500 bg-emerald-50/70 shadow-xs'
+                    : 'border-[#E6DFCE] bg-white shadow-2xs'
+                }`}
+              >
+                <span className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-[#F3EBDD]">
+                  {hasImage ? (
+                    <img
+                      src={item.imageUrl}
+                      alt={item.title}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      onError={() => setBrokenImages(prev => ({ ...prev, [item.pageId]: true }))}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <RecipeIllustration recipeName={item.title} className="h-full w-full" />
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="min-w-0 flex-1 text-xs font-extrabold leading-5 text-gray-900 line-clamp-2">
+                      {item.title}
+                    </span>
+                    <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${badge.className}`}>
+                      {badge.label}
+                    </span>
+                  </div>
+                  <span className="mt-1 block text-[10px] font-medium text-[#626B49]">
+                    اضغط لعرض المقادير والطريقة كاملة ←
                   </span>
                 </div>
-                <span className="mt-1 block text-[10px] font-normal text-gray-500">وصفة ومكونات وطريقة التحضير</span>
               </button>
             );
           })}
         </div>
       )}
 
-      {selected && (
-        <article className="overflow-hidden rounded-2xl border border-gray-200">
-          {selected.imageUrl && <img src={selected.imageUrl} alt={selected.title} loading="lazy" className="max-h-56 w-full object-cover" />}
-          <div className="space-y-3 p-3">
-            <div className="flex items-start justify-between gap-2">
-              <h4 className="min-w-0 flex-1 text-base font-black text-gray-900">{selected.title}</h4>
-              <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold whitespace-nowrap ${CUISINE_BADGE_META[selected.cuisine || 'international'].className}`}>
-                {CUISINE_BADGE_META[selected.cuisine || 'international'].label}
-              </span>
-            </div>
-            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-800">المقادير محسوبة لـ {familySize} أفراد</p>
-            {(() => {
-              const sections = parseRecipeSections(selected.extract, familySize, selected.servings || 4);
-              return <div className="space-y-3">
-                {sections.ingredients.length > 0 && <section>
-                  <h5 className="mb-1 text-base font-black text-gray-900">المكونات المطلوبة</h5>
-                  <ul className="list-disc space-y-1 pr-5 text-sm leading-8 text-gray-800">{sections.ingredients.map((ingredient,index)=><li key={index}>{ingredient}</li>)}</ul>
-                </section>}
-                <section>
-                  <h5 className="mb-1 text-base font-black text-gray-900">طريقة التحضير خطوة بخطوة</h5>
-                  <ol className="list-decimal space-y-2 pr-5 text-sm leading-8 text-gray-800">{sections.steps.map((step,index)=><li key={index}>{step}</li>)}</ol>
+      {selected && (() => {
+        const badge = CUISINE_BADGE_META[selected.cuisine || 'international'];
+        const sections = parseRecipeSections(selected.extract, familySize, selected.servings || 4);
+        const hasValidImage = Boolean(selected.imageUrl) && !brokenImages[selected.pageId];
+        const hasExternalSource = Boolean(selected.url) && selected.url !== 'https://www.themealdb.com/';
+
+        const modalNode = (
+          <div
+            dir="rtl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="online-recipe-fullscreen-title"
+            className="fixed inset-0 z-[100] bg-[#F8F3E9] flex flex-col overflow-hidden"
+          >
+            {/* Sticky Top Header */}
+            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[#E4DECF] bg-[#FBF8F1]/95 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur-sm">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${badge.className}`}>
+                    {badge.label}
+                  </span>
+                  <span className="text-[11px] font-semibold text-[#68745F]">
+                    لأسرة من {familySize} أفراد
+                  </span>
+                </div>
+                <h4
+                  id="online-recipe-fullscreen-title"
+                  className="mt-1 text-base font-black leading-snug text-[#1E5631] line-clamp-2"
+                >
+                  {selected.title}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={closeSelectedModal}
+                aria-label="إغلاق"
+                className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-[#DFD7C5] bg-white text-[#43523D] shadow-2xs transition hover:bg-[#F3EDE0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+
+            {/* Full-Screen Scrollable Recipe Content */}
+            <div className="flex-1 overflow-y-auto p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+              <div className="mx-auto max-w-2xl space-y-4">
+                <div className="overflow-hidden rounded-2xl border border-[#E4DECF] bg-white shadow-xs">
+                  {hasValidImage ? (
+                    <img
+                      src={selected.imageUrl}
+                      alt={selected.title}
+                      referrerPolicy="no-referrer"
+                      onError={() => setBrokenImages(prev => ({ ...prev, [selected.pageId]: true }))}
+                      className="h-56 w-full object-cover sm:h-64"
+                    />
+                  ) : (
+                    <div className="flex h-48 w-full items-center justify-center bg-[#F3EBDD] p-4">
+                      <RecipeIllustration recipeName={selected.title} className="h-36 w-36" />
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-3.5 py-2.5 text-xs font-bold text-emerald-900">
+                  المقادير والكميات محسوبة ومضبوطة لـ {familySize} أفراد
+                </div>
+
+                {sections.ingredients.length > 0 && (
+                  <section className="rounded-2xl border border-[#E4DECF] bg-white p-4 shadow-2xs">
+                    <h5 className="mb-2.5 text-sm font-black text-[#1E5631]">المكونات المطلوبة</h5>
+                    <ul className="space-y-2 text-sm leading-7 text-gray-800">
+                      {sections.ingredients.map((ingredient, index) => (
+                        <li key={index} className="flex items-start gap-2">
+                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#626B49]" aria-hidden="true" />
+                          <span>{ingredient}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                <section className="rounded-2xl border border-[#E4DECF] bg-white p-4 shadow-2xs">
+                  <h5 className="mb-3 text-sm font-black text-[#1E5631]">طريقة التحضير خطوة بخطوة</h5>
+                  <ol className="space-y-3 text-sm leading-7 text-gray-800">
+                    {sections.steps.map((step, index) => (
+                      <li key={index} className="flex items-start gap-3 rounded-xl border border-[#EFE9DA] bg-[#FBF8F1] p-3">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#626B49] text-xs font-extrabold text-white">
+                          {['١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩', '١٠'][index] || String(index + 1)}
+                        </span>
+                        <span className="min-w-0 flex-1">{step}</span>
+                      </li>
+                    ))}
+                  </ol>
                 </section>
-              </div>;
-            })()}
-            {selected.imageUrl && <p className="text-[9px] leading-5 text-gray-500">الصورة: {selected.imageCredit || 'TheMealDB'} — {selected.imageLicense || 'راجع المصدر الأصلي'}</p>}
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => void (speaking ? stopRecipeSpeech() : speakRecipe(selected))}
-                className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-3 py-2 text-[11px] font-bold text-white">
-                {speaking ? <><VolumeX className="h-4 w-4" /> إيقاف الاستماع</> : <><Volume2 className="h-4 w-4" /> اسمع الوصفة</>}
-              </button>
-              <button type="button" onClick={() => saveRecipe(selected)}
-                className="rounded-xl bg-amber-100 px-3 py-2 text-[11px] font-bold text-amber-900">
-                {saved.some(item => item.pageId === selected.pageId) ? '✓ محفوظة' : '☆ احفظ الوصفة'}
-              </button>
-              {showSaved && <button type="button" onClick={() => removeSaved(selected.pageId)}
-                className="rounded-xl bg-red-50 px-3 py-2 text-[11px] font-bold text-red-700">حذف من المحفوظات</button>}
-              <a href={selected.url} target="_blank" rel="noreferrer"
-                className="rounded-xl bg-[#F1F5EC] px-3 py-2 text-[11px] font-bold text-[#1E5631] hover:bg-[#E4ECD9]">المصدر الأصلي ↗</a>
+
+                {selected.imageUrl && !brokenImages[selected.pageId] && (
+                  <p className="text-[10px] leading-5 text-gray-500">
+                    الصورة: {selected.imageCredit || 'TheMealDB'} — {selected.imageLicense || 'راجع المصدر الأصلي'}
+                  </p>
+                )}
+              </div>
             </div>
+
+            {/* Sticky Bottom Controls Bar */}
+            <footer className="shrink-0 border-t border-[#E4DECF] bg-[#FBF8F1]/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur-sm">
+              <div className="mx-auto flex max-w-2xl flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void (speaking ? stopRecipeSpeech() : speakRecipe(selected))}
+                  className={`inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-white transition ${
+                    speaking ? 'bg-red-600 hover:bg-red-700' : 'bg-[#1E5631] hover:bg-[#2E7D32]'
+                  }`}
+                >
+                  {speaking ? <><VolumeX className="h-4 w-4 shrink-0" /> إيقاف الاستماع</> : <><Volume2 className="h-4 w-4 shrink-0" /> اسمع الوصفة</>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => saveRecipe(selected)}
+                  className="min-h-[44px] rounded-xl border border-[#DFC98E] bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-900 transition hover:bg-amber-100"
+                >
+                  {saved.some(item => item.pageId === selected.pageId) ? '✓ محفوظة' : '☆ احفظ الوصفة'}
+                </button>
+                {showSaved && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      removeSaved(selected.pageId);
+                      closeSelectedModal();
+                    }}
+                    className="min-h-[44px] rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100"
+                  >
+                    حذف
+                  </button>
+                )}
+                {hasExternalSource && (
+                  <a
+                    href={selected.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex min-h-[44px] items-center rounded-xl border border-[#D7E2CF] bg-[#F1F5EC] px-3 py-2 text-xs font-bold text-[#1E5631] hover:bg-[#E4ECD9]"
+                  >
+                    المصدر ↗
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={closeSelectedModal}
+                  className="min-h-[44px] rounded-xl border border-[#DFD7C5] bg-white px-4 py-2 text-xs font-bold text-[#43523D] hover:bg-[#F3EDE0]"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </footer>
           </div>
-        </article>
-      )}
+        );
+
+        return typeof document !== 'undefined' ? createPortal(modalNode, document.body) : modalNode;
+      })()}
 
       {!loading && showSaved && saved.length === 0 && <p className="rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-500">لسه مفيش وصفات أونلاين محفوظة.</p>}
       {!loading && !showSaved && results.length === 0 && !error && <p className="text-[10px] leading-5 text-gray-400">اكتب اسم الأكلة بالعربي أو الإنجليزي، وهندور في مكتبة الوصفات المجانية.</p>}

@@ -7,6 +7,7 @@
 # Protect Capacitor bridge plugins and annotated plugin methods from R8 stripping/renaming
 -keep class * extends com.getcapacitor.Plugin { *; }
 -keep class com.tedbeera.egypt.**Plugin { *; }
+-keep class com.getcapacitor.community.admob.** { *; }
 -keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
 -keepclassmembers class * {
     @com.getcapacitor.PluginMethod <methods>;

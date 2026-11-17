@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertCircle, Check, ChefHat, ExternalLink, Eye, SlidersHorizontal, X } from 'lucide-react';
+import { AlertCircle, Check, ExternalLink, Eye, SlidersHorizontal, X } from 'lucide-react';
+import { RECIPES } from '../../data/seedData';
+import { RecipeIllustration } from '../../components/RecipeIllustration';
+import {
+  CUISINE_BADGE_META,
+  detectMealDbCuisineTier,
+  type CuisineTier,
+} from './OnlineRecipeSearch';
 
 type Meal = {
   idMeal: string;
   strMeal: string;
+  strArea?: string;
   strMealThumb?: string;
   strInstructions?: string;
   strSource?: string;
@@ -16,10 +24,11 @@ type IngredientItem = {
   available: boolean;
 };
 
-type Result = {
+export type IngredientFinderResult = {
   id: string;
   title: string;
   image?: string;
+  cuisine: CuisineTier;
   ingredients: string[];
   ingredientBreakdown: IngredientItem[];
   isLocal?: boolean;
@@ -31,12 +40,22 @@ type Result = {
 };
 
 const API = 'https://www.themealdb.com/api/json/v1/1';
+const ONLINE_FETCH_TIMEOUT_MS = 3000;
+
+const CUISINE_PRIORITY: Record<CuisineTier, number> = {
+  egyptian: 0,
+  arab: 1,
+  international: 2,
+};
+
 const INGREDIENTS: Record<string, string> = {
-  'رز': 'rice', 'ارز': 'rice', 'مكرونة': 'pasta', 'بتنجان': 'aubergine', 'باذنجان': 'aubergine',
+  'رز': 'rice', 'ارز': 'rice', 'أرز': 'rice', 'مكرونة': 'pasta', 'بتنجان': 'aubergine', 'باذنجان': 'aubergine',
   'بطاطس': 'potatoes', 'بصل': 'onion', 'طماطم': 'tomato', 'ثوم': 'garlic', 'بيض': 'eggs',
-  'فراخ': 'chicken', 'دجاج': 'chicken', 'لحمة': 'beef', 'لحم': 'beef', 'سمك': 'fish',
-  'فلفل': 'pepper', 'جزر': 'carrots', 'كوسة': 'courgette', 'عدس': 'lentils', 'حمص': 'chickpeas',
-  'فول': 'broad beans', 'سبانخ': 'spinach', 'جبنة': 'cheese', 'لبن': 'milk',
+  'فراخ': 'chicken', 'دجاج': 'chicken', 'بواقي فراخ': 'chicken', 'لحمة': 'beef', 'لحم': 'beef', 'بواقي لحمة': 'beef',
+  'سمك': 'fish', 'جمبري': 'shrimp', 'سبيط': 'squid', 'كاليماري': 'squid', 'تونة': 'tuna',
+  'فلفل': 'pepper', 'فلفل رومي': 'pepper', 'جزر': 'carrots', 'كوسة': 'courgette',
+  'عدس': 'lentils', 'عدس اصفر': 'lentils', 'عدس بجبة': 'lentils', 'عدس بجبه': 'lentils',
+  'حمص': 'chickpeas', 'فول': 'broad beans', 'سبانخ': 'spinach', 'جبنة': 'cheese', 'جبنه': 'cheese', 'لبن': 'milk',
 };
 
 const normalize = (s: string) =>
@@ -45,15 +64,43 @@ const normalize = (s: string) =>
 const normalizeText = (s: string) =>
   normalize(s).toLowerCase().replace(/\s+/g, ' ');
 
+/**
+ * Strips leftover Latin/foreign script prefixes from translated recipe titles
+ * (e.g., "Kaspressknödel - كاسبريسنودل" -> "كاسبريسنودل") so only clean Arabic dish names appear.
+ */
+export function cleanTranslatedArabicTitle(rawTitle: string): string {
+  const trimmed = (rawTitle || '').trim();
+  if (!trimmed) return '';
+  if (!/[\u0600-\u06FF]/.test(trimmed)) return trimmed;
+
+  let cleaned = trimmed
+    // Strip leading Latin/accented prefix followed by separator (-, –, —, :, |, /)
+    .replace(/^[A-Za-z0-9\u00C0-\u024F\s'’"().,!?&]+[-–—:|/]+\s*/u, '')
+    // Strip trailing parenthesized foreign text e.g. "(Kaspressknödel)"
+    .replace(/\s*\([A-Za-z0-9\u00C0-\u024F\s'’".,!?-]+\)\s*$/u, '')
+    // Strip standalone leading Latin words before Arabic text
+    .replace(/^(?:[A-Za-z\u00C0-\u024F'’.-]+\s+)+(?=[\u0600-\u06FF])/u, '')
+    .replace(/^[-–—:|/\s]+|[-–—:|/\s]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return cleaned || trimmed;
+}
+
 type LocalRecipeEntry = {
+  id: string;
   name: string;
+  cuisine: CuisineTier;
+  imageUrl?: string;
   ingredients: Array<{ label: string; aliases: string[] }>;
   instructions: string;
 };
 
-const local: LocalRecipeEntry[] = [
+const CURATED_LOCAL_BASICS: LocalRecipeEntry[] = [
   {
+    id: 'local-moussaka',
     name: 'مسقعة مصرية',
+    cuisine: 'egyptian',
     ingredients: [
       { label: 'باذنجان', aliases: ['بتنجان', 'باذنجان'] },
       { label: 'طماطم', aliases: ['طماطم'] },
@@ -63,7 +110,9 @@ const local: LocalRecipeEntry[] = [
     instructions: 'قطّع البتنجان وحمّره أو اشوه. حضّر صلصة من البصل والثوم والطماطم، ثم رصّ البتنجان معها واتركه يتسبك.',
   },
   {
+    id: 'local-potato-sauce',
     name: 'بطاطس بالصلصة',
+    cuisine: 'egyptian',
     ingredients: [
       { label: 'بطاطس', aliases: ['بطاطس'] },
       { label: 'طماطم', aliases: ['طماطم'] },
@@ -73,29 +122,35 @@ const local: LocalRecipeEntry[] = [
     instructions: 'شوّح البصل والثوم، أضف الطماطم والتوابل ثم البطاطس والماء واتركها حتى تنضج.',
   },
   {
+    id: 'local-koshari',
     name: 'كشري مصري',
+    cuisine: 'egyptian',
     ingredients: [
-      { label: 'أرز', aliases: ['رز', 'ارز'] },
+      { label: 'أرز', aliases: ['رز', 'ارز', 'أرز'] },
       { label: 'مكرونة', aliases: ['مكرونة'] },
       { label: 'بصل', aliases: ['بصل'] },
       { label: 'طماطم', aliases: ['طماطم'] },
-      { label: 'عدس', aliases: ['عدس'] },
+      { label: 'عدس', aliases: ['عدس', 'عدس بجبة'] },
       { label: 'حمص', aliases: ['حمص'] },
     ],
     instructions: 'اسلق العدس والأرز والمكرونة كلًّا على حدة. حضّر صلصة الطماطم وحمّر البصل وقدّم المكونات معًا.',
   },
   {
+    id: 'local-shakshouka',
     name: 'شكشوكة',
+    cuisine: 'egyptian',
     ingredients: [
       { label: 'بيض', aliases: ['بيض'] },
       { label: 'طماطم', aliases: ['طماطم'] },
       { label: 'بصل', aliases: ['بصل'] },
-      { label: 'فلفل', aliases: ['فلفل'] },
+      { label: 'فلفل', aliases: ['فلفل', 'فلفل رومي'] },
     ],
     instructions: 'شوّح البصل والفلفل، أضف الطماطم حتى تتسبك، ثم أضف البيض واتركه حتى ينضج.',
   },
   {
+    id: 'local-potato-eggplant',
     name: 'صينية بطاطس بالباذنجان',
+    cuisine: 'egyptian',
     ingredients: [
       { label: 'بطاطس', aliases: ['بطاطس'] },
       { label: 'باذنجان', aliases: ['بتنجان', 'باذنجان'] },
@@ -106,11 +161,58 @@ const local: LocalRecipeEntry[] = [
   },
 ];
 
+function buildExpandedLocalLibrary(): LocalRecipeEntry[] {
+  const seenNames = new Set<string>(CURATED_LOCAL_BASICS.map((item) => normalizeText(item.name)));
+  const fromSeed: LocalRecipeEntry[] = [];
+
+  for (const recipe of RECIPES) {
+    const normName = normalizeText(recipe.name);
+    if (!normName || seenNames.has(normName)) continue;
+    seenNames.add(normName);
+
+    const detectedCuisine = recipe.cuisine || detectMealDbCuisineTier(undefined, `${recipe.name} ${recipe.tags.join(' ')}`);
+    const finalCuisine: CuisineTier =
+      detectedCuisine === 'international' ? 'egyptian' : detectedCuisine;
+
+    fromSeed.push({
+      id: `local-${recipe.id}`,
+      name: recipe.name,
+      cuisine: finalCuisine,
+      imageUrl: recipe.imageUrl || undefined,
+      ingredients: recipe.ingredients.map((ing) => {
+        const words = normalizeText(ing.name).split(' ').filter((w) => w.length > 2);
+        return {
+          label: `${ing.name}${ing.quantity ? ` (${ing.quantity})` : ''}`,
+          aliases: Array.from(new Set([ing.name, ...words])),
+        };
+      }),
+      instructions: recipe.steps.map((s, idx) => `${idx + 1}. ${s}`).join('\n'),
+    });
+  }
+
+  return [...CURATED_LOCAL_BASICS, ...fromSeed];
+}
+
+const EXPANDED_LOCAL_RECIPES = buildExpandedLocalLibrary();
+
+// Cache online results per sorted normalized ingredient signature for instant repeat taps
+const onlineIngredientCache = new Map<string, IngredientFinderResult[]>();
+
+async function fetchWithTimeout(url: string, timeoutMs = ONLINE_FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    globalThis.clearTimeout(timer);
+  }
+}
+
 async function translate(value: string): Promise<string> {
   try {
     const url = new URL('https://translate.googleapis.com/translate_a/single');
     url.search = new URLSearchParams({ client: 'gtx', sl: 'ar', tl: 'en', dt: 't', q: value }).toString();
-    const response = await fetch(url.toString());
+    const response = await fetchWithTimeout(url.toString(), ONLINE_FETCH_TIMEOUT_MS);
     if (!response.ok) throw new Error('translation-failed');
     const data = await response.json();
     return Array.isArray(data?.[0]) ? data[0].map((part: unknown[]) => (typeof part?.[0] === 'string' ? part[0] : '')).join('') : value;
@@ -136,7 +238,7 @@ async function translateToArabic(value: string): Promise<string> {
   try {
     const url = new URL('https://translate.googleapis.com/translate_a/single');
     url.search = new URLSearchParams({ client: 'gtx', sl: 'en', tl: 'ar', dt: 't', q: value.slice(0, 4500) }).toString();
-    const response = await fetch(url.toString());
+    const response = await fetchWithTimeout(url.toString(), ONLINE_FETCH_TIMEOUT_MS);
     if (!response.ok) throw new Error('translation-failed');
     const data = await response.json();
     const translated = Array.isArray(data?.[0]) ? data[0].map((part: unknown[]) => (typeof part?.[0] === 'string' ? part[0] : '')).join('') : '';
@@ -147,19 +249,22 @@ async function translateToArabic(value: string): Promise<string> {
   }
 }
 
-function getMatchPercent(item: Result): number {
+function getMatchPercent(item: { matched: number; total: number }): number {
   if (item.total <= 0) return 0;
   return Math.min(100, Math.round((item.matched / item.total) * 100));
 }
 
-function buildLocalResults(availableIngredients: string[]): Result[] {
+function buildLocalResults(availableIngredients: string[]): IngredientFinderResult[] {
   const normalizedSelected = availableIngredients.map(normalizeText).filter(Boolean);
 
-  return local.map((recipe, index) => {
+  return EXPANDED_LOCAL_RECIPES.map((recipe) => {
     const breakdown: IngredientItem[] = recipe.ingredients.map((ing) => {
       const available = ing.aliases.some((alias) => {
         const normAlias = normalizeText(alias);
-        return normalizedSelected.some((sel) => sel === normAlias || sel.includes(normAlias) || normAlias.includes(sel));
+        if (!normAlias) return false;
+        return normalizedSelected.some(
+          (sel) => sel === normAlias || sel.includes(normAlias) || normAlias.includes(sel)
+        );
       });
       return { text: ing.label, available };
     });
@@ -168,8 +273,10 @@ function buildLocalResults(availableIngredients: string[]): Result[] {
     const missing = breakdown.filter((b) => !b.available).map((b) => b.text);
 
     return {
-      id: `local-${index}`,
+      id: recipe.id,
       title: recipe.name,
+      image: recipe.imageUrl,
+      cuisine: recipe.cuisine,
       ingredients: breakdown.map((b) => b.text),
       ingredientBreakdown: breakdown,
       isLocal: true,
@@ -182,8 +289,16 @@ function buildLocalResults(availableIngredients: string[]): Result[] {
   });
 }
 
-function sortResultsByMatch(list: Result[]): Result[] {
+/**
+ * Enforces strict 3-tier priority (Egyptian -> Arab -> International) BEFORE
+ * sorting by match percentage descending, matched count, and fewer missing items.
+ */
+export function sortIngredientFinderResults<
+  T extends { cuisine?: CuisineTier; matched: number; total: number; missing: string[] }
+>(list: T[]): T[] {
   return [...list].sort((a, b) => {
+    const tierDiff = CUISINE_PRIORITY[a.cuisine || 'international'] - CUISINE_PRIORITY[b.cuisine || 'international'];
+    if (tierDiff !== 0) return tierDiff;
     const percentDiff = getMatchPercent(b) - getMatchPercent(a);
     if (percentDiff !== 0) return percentDiff;
     const matchedDiff = b.matched - a.matched;
@@ -192,13 +307,26 @@ function sortResultsByMatch(list: Result[]): Result[] {
   });
 }
 
+function dedupeAndSortResults(list: IngredientFinderResult[]): IngredientFinderResult[] {
+  const sorted = sortIngredientFinderResults(list);
+  const seen = new Set<string>();
+  const unique: IngredientFinderResult[] = [];
+  for (const item of sorted) {
+    const key = normalizeText(item.title);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+  }
+  return unique;
+}
+
 export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }: { availableIngredients: string[]; familySize?: number }) {
-  const [results, setResults] = useState<Result[]>([]);
+  const [results, setResults] = useState<IngredientFinderResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [cuisine, setCuisine] = useState<'all' | 'egyptian'>('all');
   const [showAllRecipes, setShowAllRecipes] = useState(false);
-  const [selected, setSelected] = useState<Result | null>(null);
+  const [selected, setSelected] = useState<IngredientFinderResult | null>(null);
   const [modalImageBroken, setModalImageBroken] = useState(false);
 
   useEffect(() => {
@@ -218,30 +346,50 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
 
   const search = async () => {
     if (!availableIngredients.length || loading) return;
-    setLoading(true);
     setError('');
     setSelected(null);
-    setResults([]);
     setShowAllRecipes(false);
 
     const normalizedArabicSelected = availableIngredients.map(normalizeText).filter(Boolean);
+    const cacheKey = [...normalizedArabicSelected].sort().join('|');
+
+    // Step 1: Render matched local Egyptian & Arab recipes instantaneously (0ms)
+    const localResults = buildLocalResults(availableIngredients);
+    const cachedOnline = onlineIngredientCache.get(cacheKey);
+    if (cachedOnline) {
+      const instantCombined = dedupeAndSortResults([...localResults, ...cachedOnline]);
+      setResults(instantCombined);
+      if (!instantCombined.some((item) => item.matched > 0)) {
+        setError('ملقيناش وصفات مطابقة لمكوناتك الحالية. جرّب إضافة مكونات تانية أو اعرض كل الوصفات.');
+      }
+      return;
+    }
+
+    const immediateLocal = dedupeAndSortResults(localResults);
+    setResults(immediateLocal);
+    setLoading(true);
 
     try {
+      // Step 2: Cap online lookups to top 4 core ingredients in parallel with strict 3s timeout
+      const coreIngredients = availableIngredients.slice(0, 4);
       const english = await Promise.all(
-        availableIngredients.map(async (name) => {
+        coreIngredients.map(async (name) => {
           const key = normalize(name);
           return INGREDIENTS[key] || INGREDIENTS[name] || (await translate(name));
         }),
       );
       const normalizedEnglishSelected = english.map((item) => item.trim().toLowerCase()).filter(Boolean);
 
-      const ingredientLists = await Promise.all(
-        english.map(async (ingredient) => {
-          const response = await fetch(`${API}/filter.php?i=${encodeURIComponent(ingredient)}`);
+      const ingredientListsSettled = await Promise.allSettled(
+        normalizedEnglishSelected.map(async (ingredient) => {
+          const response = await fetchWithTimeout(`${API}/filter.php?i=${encodeURIComponent(ingredient)}`, ONLINE_FETCH_TIMEOUT_MS);
           if (!response.ok) return [];
           const data = await response.json();
           return (Array.isArray(data.meals) ? data.meals : []) as Array<{ idMeal: string; strMeal: string; strMealThumb?: string }>;
         }),
+      );
+      const ingredientLists = ingredientListsSettled.map((outcome) =>
+        outcome.status === 'fulfilled' ? outcome.value : []
       );
 
       const matchCounts = new Map<string, number>();
@@ -253,21 +401,21 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
 
       const ids = [...matchCounts.entries()]
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 8)
+        .slice(0, 6)
         .map(([id]) => id);
 
-      const details = await Promise.all(
+      const detailsSettled = await Promise.allSettled(
         ids.map(async (id) => {
-          const response = await fetch(`${API}/lookup.php?i=${id}`);
+          const response = await fetchWithTimeout(`${API}/lookup.php?i=${id}`, ONLINE_FETCH_TIMEOUT_MS);
           if (!response.ok) return null;
           const data = await response.json();
           return (data.meals?.[0] || null) as Meal | null;
         }),
       );
 
-      const valid = details.filter((meal): meal is Meal => !!meal);
+      const valid = detailsSettled.flatMap((item) => (item.status === 'fulfilled' && item.value ? [item.value] : []));
       const mappedResults = await Promise.allSettled(
-        valid.map(async (meal) => {
+        valid.map(async (meal): Promise<IngredientFinderResult> => {
           const mealEntries = Array.from({ length: 20 }, (_, i) => {
             const name = meal[`strIngredient${i + 1}`]?.trim() || '';
             const measure = meal[`strMeasure${i + 1}`]?.trim() || '';
@@ -280,12 +428,13 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
           const raw = meal.strInstructions || 'لا تتوفر طريقة التحضير في المصدر.';
           const rawIngredients = mealEntries.map((entry) => entry.line).join('\n');
 
-          const [title, ingredientsText, instructions] = await Promise.all([
+          const [translatedTitle, ingredientsText, instructions] = await Promise.all([
             translateToArabic(meal.strMeal),
             translateToArabic(rawIngredients),
             translateToArabic(raw),
           ]);
 
+          const cleanTitle = cleanTranslatedArabicTitle(translatedTitle);
           const translatedLines = ingredientsText.split('\n').map((line) => line.trim()).filter(Boolean);
           const breakdown: IngredientItem[] = translatedLines.map((line, index) => {
             const engName = (mealEntries[index]?.name || '').toLowerCase();
@@ -310,8 +459,9 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
 
           return {
             id: meal.idMeal,
-            title,
+            title: cleanTitle,
             image: meal.strMealThumb,
+            cuisine: detectMealDbCuisineTier(meal.strArea, `${meal.strMeal} ${cleanTitle}`),
             ingredients: translatedLines,
             ingredientBreakdown: breakdown,
             matched,
@@ -323,19 +473,19 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
         }),
       );
 
-      const mapped: Result[] = mappedResults.flatMap((item) => (item.status === 'fulfilled' ? [item.value] : []));
-      const localResults = buildLocalResults(availableIngredients);
-      const combined = [...mapped, ...localResults];
-      const unique = sortResultsByMatch(Array.from(new Map(combined.map((item) => [item.title, item])).values()));
+      const mapped: IngredientFinderResult[] = mappedResults.flatMap((item) =>
+        item.status === 'fulfilled' ? [item.value] : []
+      );
+      onlineIngredientCache.set(cacheKey, mapped);
 
+      const unique = dedupeAndSortResults([...localResults, ...mapped]);
       setResults(unique);
       if (!unique.some((item) => item.matched > 0)) {
         setError('ملقيناش وصفات مطابقة لمكوناتك الحالية. جرّب إضافة مكونات تانية أو اعرض كل الوصفات.');
       }
     } catch {
-      const fallback = sortResultsByMatch(buildLocalResults(availableIngredients));
-      setResults(fallback);
-      if (!fallback.some((item) => item.matched > 0)) {
+      setResults(immediateLocal);
+      if (!immediateLocal.some((item) => item.matched > 0)) {
         setError('تعذر الاتصال بمكتبة الوصفات. يمكنك عرض الوصفات المحلية أو التحقق من الإنترنت.');
       }
     } finally {
@@ -346,9 +496,9 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
   const cuisineFilteredResults = useMemo(() => {
     const base =
       cuisine === 'egyptian'
-        ? results.filter((item) => item.isLocal || /مصري|كشري|مسقعة|شكشوكة|بطاطس|صينية/i.test(item.title))
+        ? results.filter((item) => item.cuisine === 'egyptian')
         : results;
-    return sortResultsByMatch(base);
+    return sortIngredientFinderResults(base);
   }, [results, cuisine]);
 
   const matchedCount = useMemo(
@@ -396,6 +546,11 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
         {/* Sticky Modal Header */}
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#E6DFCE] bg-[#FBF8F1] px-4 py-3">
           <div className="min-w-0">
+            <div className="mb-1 flex items-center gap-2">
+              <span className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${CUISINE_BADGE_META[selected.cuisine].className}`}>
+                {CUISINE_BADGE_META[selected.cuisine].label}
+              </span>
+            </div>
             <h4 id="recipe-detail-modal-title" className="text-base font-black leading-snug text-[#1E5631]">
               {selected.title}
             </h4>
@@ -404,7 +559,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
                 متوفر {selected.matched} من {selected.total} مكوّن
               </span>
               <span aria-hidden="true">·</span>
-              <span className="text-[#2E7D32] font-bold">{getMatchPercent(selected)}% تطابق</span>
+              <span className="font-bold text-[#2E7D32]">{getMatchPercent(selected)}% تطابق</span>
               <span aria-hidden="true">·</span>
               <span>لـ {familySize} أفراد</span>
             </p>
@@ -431,12 +586,11 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
                 className="max-h-56 w-full object-cover"
               />
             </div>
-          ) : selected.image ? (
-            <div className="flex h-36 w-full flex-col items-center justify-center gap-2 rounded-2xl border border-[#E4DECF] bg-[#F3EBDD] text-[#5C6650]">
-              <ChefHat className="h-7 w-7 text-[#1E5631]" />
-              <span className="text-xs font-bold">{selected.title}</span>
+          ) : (
+            <div className="flex h-44 w-full items-center justify-center rounded-2xl border border-[#E4DECF] bg-[#F3EBDD] p-3">
+              <RecipeIllustration recipeId={selected.id} recipeName={selected.title} className="h-36 w-36" />
             </div>
-          ) : null}
+          )}
 
           {/* Available vs. Missing Ingredients */}
           {selected.ingredientBreakdown.length > 0 && (
@@ -492,7 +646,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
           )}
 
           {/* Preparation Steps */}
-          <div className="rounded-2xl border border-[#E4DECF] bg-white p-3.5 space-y-2">
+          <div className="space-y-2 rounded-2xl border border-[#E4DECF] bg-white p-3.5">
             <h5 className="text-xs font-black text-[#1E5631]">طريقة التحضير</h5>
             <p className="whitespace-pre-wrap text-sm leading-7 text-gray-800">{selected.instructions}</p>
           </div>
@@ -531,7 +685,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
       <div>
         <h3 className="text-sm font-black text-[#1E5631]">🍲 اطبخ بالموجود عندك</h3>
         <p className="mt-1 text-[11px] leading-5 text-[#665F52]">
-          ابحث بالمكونات المتوفرة، والوصفات المترجمة بتظهر بالعربي مع مقادير مضبوطة لـ {familySize} أفراد.
+          ابحث بالمكونات المتوفرة، والوصفات المصرية والعربية بتظهر فوراً مع مقادير مضبوطة لـ {familySize} أفراد.
         </p>
       </div>
 
@@ -564,7 +718,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
           onClick={search}
           className="min-h-[40px] whitespace-nowrap shrink-0 rounded-xl bg-[#2E7D32] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#1E5631] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
         >
-          {loading ? 'جاري البحث أونلاين…' : 'دور بالمكونات دي'}
+          {loading ? 'بنكمّل البحث أونلاين…' : 'دور بالمكونات دي'}
         </button>
       </div>
 
@@ -586,6 +740,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
               {showAllRecipes
                 ? `كل الوصفات (${cuisineFilteredResults.length})`
                 : `الوصفات المناسبة لمكوناتك (${matchedCount})`}
+              {loading && <span className="mr-2 text-[10px] font-medium text-[#2E7D32]">· جاري إضافة نتائج أونلاين…</span>}
             </div>
 
             {zeroMatchCount > 0 && (
@@ -611,18 +766,37 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
               {visibleResults.map((item) => {
                 const percent = getMatchPercent(item);
                 const isSelected = selected?.id === item.id;
+                const badge = CUISINE_BADGE_META[item.cuisine];
 
                 return (
                   <button
                     type="button"
                     key={item.id}
                     onClick={() => setSelected(item)}
-                    className={`flex w-full items-center justify-between gap-3 rounded-xl border bg-white p-3 text-right transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631] ${
+                    className={`flex w-full items-center justify-between gap-3 rounded-xl border bg-white p-2.5 text-right transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631] ${
                       isSelected ? 'border-[#1E5631] ring-1 ring-[#1E5631]/30' : 'border-[#E6DFCE] hover:border-[#2E7D32]/60'
                     }`}
                   >
+                    <span className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-[#F3EBDD]">
+                      {item.image ? (
+                        <img
+                          src={item.image}
+                          alt={item.title}
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <RecipeIllustration recipeId={item.id} recipeName={item.title} className="h-full w-full" />
+                      )}
+                    </span>
                     <div className="min-w-0 flex-1">
-                      <span className="block truncate text-xs font-extrabold text-gray-900">{item.title}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="min-w-0 flex-1 truncate text-xs font-extrabold text-gray-900">{item.title}</span>
+                        <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold whitespace-nowrap ${badge.className}`}>
+                          {badge.label}
+                        </span>
+                      </div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] tabular-nums">
                         <span className={item.matched > 0 ? 'font-bold text-[#1E5631]' : 'font-medium text-[#7B7364]'}>
                           متوفر {item.matched} من {item.total} مكوّن
@@ -643,7 +817,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
               })}
             </div>
           ) : (
-            <div className="rounded-xl border border-dashed border-[#D8CFBC] bg-white p-4 text-center space-y-2.5">
+            <div className="space-y-2.5 rounded-xl border border-dashed border-[#D8CFBC] bg-white p-4 text-center">
               <p className="text-xs font-semibold text-[#5C5548]">
                 مفيش وصفات مطابقة للمكونات المختارة حالياً.
               </p>
@@ -665,4 +839,3 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
     </section>
   );
 }
-

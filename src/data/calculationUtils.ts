@@ -31,7 +31,8 @@ export interface TedbeeraBackupData {
   familySize: number;
   budgetAmount: string;
   categories: BudgetCategoryDef[];
-  categoryPercentages: number[];
+  categoryPercentages?: number[];
+  categoryAllocations?: Record<string, number>;
   expenses: ExpenseRecord[];
   shoppingItems: ShoppingItem[];
   savedRecipeIds: string[];
@@ -47,6 +48,7 @@ export interface TedbeeraBackupData {
   householdProfile?: Record<string, unknown> | null;
   inventoryItems?: Record<string, unknown>[];
   householdTasks?: Record<string, unknown>[];
+  customReminders?: Record<string, unknown>[];
   savingsGoals?: Record<string, unknown>[];
   customRecipes?: Record<string, unknown>[];
   financeTransactions?: Record<string, unknown>[];
@@ -246,6 +248,59 @@ export function normalizeShoppingItemsList(rawList: unknown): ShoppingItem[] {
 }
 
 /**
+ * Normalizes any array of budget percentages so it matches the exact length
+ * of `categories` and strictly sums to 100%.
+ */
+export function normalizeBudgetPercentages(
+  rawPercentages: number[] | null | undefined,
+  categories: BudgetCategoryDef[]
+): number[] {
+  if (!Array.isArray(categories) || categories.length === 0) return [];
+
+  const source =
+    Array.isArray(rawPercentages) && rawPercentages.length === categories.length
+      ? rawPercentages
+      : categories.map(c => (typeof c.defaultPct === 'number' && isFinite(c.defaultPct) ? c.defaultPct : 0));
+
+  const cleaned = source.map(v => (typeof v === 'number' && isFinite(v) && v >= 0 ? Math.round(v) : 0));
+  const sum = cleaned.reduce((acc, v) => acc + v, 0);
+
+  if (sum === 100) return cleaned;
+
+  if (sum <= 0) {
+    const base = Math.floor(100 / categories.length);
+    const rem = 100 % categories.length;
+    return categories.map((_, i) => base + (i < rem ? 1 : 0));
+  }
+
+  const normalized: number[] = [];
+  let running = 0;
+  for (let i = 0; i < cleaned.length - 1; i++) {
+    const scaled = Math.max(0, Math.round((cleaned[i] / sum) * 100));
+    normalized.push(scaled);
+    running += scaled;
+  }
+  const last = 100 - running;
+  if (last >= 0) {
+    normalized.push(last);
+  } else {
+    normalized.push(0);
+    // Trim excess from largest elements
+    let excess = running - 100;
+    while (excess > 0) {
+      let maxIdx = 0;
+      for (let i = 1; i < normalized.length; i++) {
+        if (normalized[i] > normalized[maxIdx]) maxIdx = i;
+      }
+      if (normalized[maxIdx] === 0) break;
+      normalized[maxIdx] -= 1;
+      excess -= 1;
+    }
+  }
+  return normalized;
+}
+
+/**
  * Reconciles budget allocations to ensure exact sum reconciliation with the total budget.
  */
 export function reconcileBudgetAllocations(
@@ -286,6 +341,44 @@ export function reconcileBudgetAllocations(
       allocated,
       spent: Math.round(spent),
       remaining: Math.round(remaining),
+      isOverBudget,
+      usagePct
+    };
+  });
+}
+
+/**
+ * Computes per-category spending and remaining EGP balance using independent
+ * direct EGP envelope allocations (never alters sibling category amounts).
+ */
+export function reconcileEnvelopeAllocations(
+  allocations: Record<string, number>,
+  categories: BudgetCategoryDef[],
+  expenses: ExpenseRecord[],
+  totalBudget: number
+) {
+  const safeTotal = Math.max(0, isNaN(totalBudget) ? 0 : totalBudget);
+  return categories.map(cat => {
+    const rawAlloc = allocations[cat.id];
+    const allocated =
+      typeof rawAlloc === 'number' && Number.isFinite(rawAlloc) && rawAlloc >= 0
+        ? Math.round(rawAlloc)
+        : 0;
+    const spent = expenses
+      .filter(e => e.categoryId === cat.id)
+      .reduce((sum, e) => sum + (parseSafePrice(e.amount) || 0), 0);
+    const roundedSpent = Math.round(spent);
+    const remaining = allocated - roundedSpent;
+    const isOverBudget = roundedSpent > allocated;
+    const usagePct = allocated > 0 ? Math.min(100, Math.round((roundedSpent / allocated) * 100)) : 0;
+    const percentage = safeTotal > 0 ? Math.round((allocated / safeTotal) * 100) : 0;
+
+    return {
+      ...cat,
+      percentage,
+      allocated,
+      spent: roundedSpent,
+      remaining,
       isOverBudget,
       usagePct
     };
@@ -370,6 +463,7 @@ export function createBackupPayload(data: TedbeeraBackupData): TedbeeraBackupPay
       budgetAmount: String(data.budgetAmount || '2500'),
       categories: Array.isArray(data.categories) && data.categories.length > 0 ? data.categories : DEFAULT_BUDGET_CATEGORIES,
       categoryPercentages: Array.isArray(data.categoryPercentages) ? data.categoryPercentages : DEFAULT_BUDGET_CATEGORIES.map(c => c.defaultPct),
+      categoryAllocations: data.categoryAllocations && typeof data.categoryAllocations === 'object' ? data.categoryAllocations : undefined,
       expenses: Array.isArray(data.expenses) ? data.expenses : [],
       shoppingItems: normalizeShoppingItemsList(data.shoppingItems || []),
       savedRecipeIds: Array.isArray(data.savedRecipeIds) ? data.savedRecipeIds : [],
@@ -382,6 +476,7 @@ export function createBackupPayload(data: TedbeeraBackupData): TedbeeraBackupPay
       householdProfile: data.householdProfile && typeof data.householdProfile === 'object' ? data.householdProfile : null,
       inventoryItems: Array.isArray(data.inventoryItems) ? data.inventoryItems.filter(item => item && typeof item === 'object') : [],
       householdTasks: Array.isArray(data.householdTasks) ? data.householdTasks.filter(item => item && typeof item === 'object') : [],
+      customReminders: Array.isArray(data.customReminders) ? data.customReminders.filter(item => item && typeof item === 'object') : [],
       savingsGoals: Array.isArray(data.savingsGoals) ? data.savingsGoals.filter(item => item && typeof item === 'object') : [],
       customRecipes: Array.isArray(data.customRecipes) ? data.customRecipes.filter(item => item && typeof item === 'object') : [],
       financeTransactions: Array.isArray(data.financeTransactions) ? data.financeTransactions.filter(item => item && typeof item === 'object') : []
@@ -437,26 +532,11 @@ export function validateBackupPayload(raw: unknown): { isValid: boolean; error?:
     }
   }
 
-  // Normalize category percentages ensuring 100% sum
-  let categoryPercentages: number[] = categories.map(c => c.defaultPct);
-  if (Array.isArray(data.categoryPercentages) && data.categoryPercentages.length === categories.length) {
-    const numbers = data.categoryPercentages.map((p: any) => typeof p === 'number' && !isNaN(p) ? Math.max(0, Math.round(p)) : 0);
-    const sum = numbers.reduce((a: number, b: number) => a + b, 0);
-    if (sum === 100) {
-      categoryPercentages = numbers;
-    } else if (sum > 0) {
-      // Re-scale proportionally to exact 100%
-      let running = 0;
-      const res: number[] = [];
-      for (let i = 0; i < numbers.length - 1; i++) {
-        const scaled = Math.round((numbers[i] / sum) * 100);
-        res.push(scaled);
-        running += scaled;
-      }
-      res.push(100 - running);
-      categoryPercentages = res;
-    }
-  }
+  // Normalize category percentages ensuring 100% sum and matching length
+  const categoryPercentages = normalizeBudgetPercentages(
+    Array.isArray(data.categoryPercentages) ? data.categoryPercentages : undefined,
+    categories
+  );
 
   // Normalize expenses safely
   const expenses: ExpenseRecord[] = [];
@@ -496,7 +576,12 @@ export function validateBackupPayload(raw: unknown): { isValid: boolean; error?:
   const householdProfile = data.householdProfile && typeof data.householdProfile === 'object' && !Array.isArray(data.householdProfile) ? data.householdProfile : null;
   const inventoryItems = Array.isArray(data.inventoryItems) ? data.inventoryItems.filter((item: any) => item && typeof item === 'object' && !Array.isArray(item)) : [];
   const householdTasks = Array.isArray(data.householdTasks) ? data.householdTasks.filter((item: any) => item && typeof item === 'object' && !Array.isArray(item)) : [];
+  const customReminders = Array.isArray(data.customReminders) ? data.customReminders.filter((item: any) => item && typeof item === 'object' && !Array.isArray(item)) : [];
   const savingsGoals = Array.isArray(data.savingsGoals) ? data.savingsGoals.filter((item: any) => item && typeof item === 'object' && !Array.isArray(item)) : [];
+  const categoryAllocations =
+    data.categoryAllocations && typeof data.categoryAllocations === 'object' && !Array.isArray(data.categoryAllocations)
+      ? (data.categoryAllocations as Record<string, number>)
+      : undefined;
   const customRecipes = Array.isArray(data.customRecipes)
     ? data.customRecipes.filter((item: any) => item && typeof item === 'object' && !Array.isArray(item) && typeof item.id === 'string' && typeof item.name === 'string')
     : [];
@@ -511,6 +596,7 @@ export function validateBackupPayload(raw: unknown): { isValid: boolean; error?:
       budgetAmount,
       categories,
       categoryPercentages,
+      ...(categoryAllocations ? { categoryAllocations } : {}),
       expenses,
       shoppingItems,
       savedRecipeIds,
@@ -526,6 +612,7 @@ export function validateBackupPayload(raw: unknown): { isValid: boolean; error?:
       householdProfile,
       inventoryItems,
       householdTasks,
+      customReminders,
       savingsGoals,
       customRecipes,
       financeTransactions
@@ -1041,3 +1128,31 @@ export function toggleSavedTipId(currentList: string[], tipId: string): string[]
   return Array.from(set);
 }
 
+
+/**
+ * Reconciles direct EGP budget allocations with actual category expenses.
+ */
+export function reconcileDirectBudgetAllocations(
+  categories: BudgetCategoryDef[],
+  allocations: Record<string, number>,
+  expenses: ExpenseRecord[]
+) {
+  return categories.map(cat => {
+    const allocated = Math.max(0, allocations[cat.id] ?? Math.round((2500 * (cat.defaultPct || 10)) / 100));
+    const spent = expenses
+      .filter(e => e.categoryId === cat.id)
+      .reduce((sum, e) => sum + (parseSafePrice(e.amount) || 0), 0);
+    const remaining = allocated - spent;
+    const isOverBudget = spent > allocated;
+    const usagePct = allocated > 0 ? Math.min(100, Math.round((spent / allocated) * 100)) : 0;
+    return {
+      ...cat,
+      percentage: 0,
+      allocated,
+      spent: Math.round(spent),
+      remaining: Math.round(remaining),
+      isOverBudget,
+      usagePct
+    };
+  });
+}
