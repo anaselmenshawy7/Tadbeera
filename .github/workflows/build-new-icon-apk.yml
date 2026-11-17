@@ -44,6 +44,7 @@ jobs:
           python - <<'PY'
           from PIL import Image
           from pathlib import Path
+          import xml.etree.ElementTree as ET
 
           source = Path("public/assets/aistudio/a_clean_glossy_modern_app_icon_design_in_a_soft_2efdb44d.png")
           image = Image.open(source).convert("RGBA")
@@ -64,19 +65,29 @@ jobs:
 
           adaptive = res / "mipmap-anydpi-v26"
           adaptive.mkdir(parents=True, exist_ok=True)
-          xml = '''<?xml version="1.0" encoding="utf-8"?>
+          xml = """<?xml version="1.0" encoding="utf-8"?>
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
               <background android:drawable="@color/ic_launcher_background"/>
               <foreground android:drawable="@drawable/ic_launcher_foreground"/>
           </adaptive-icon>
-          '''
-          (adaptive / "ic_launcher.xml").write_text(xml)
-          (adaptive / "ic_launcher_round.xml").write_text(xml)
+          """
+          (adaptive / "ic_launcher.xml").write_text(xml.strip() + "\n", encoding="utf-8")
+          (adaptive / "ic_launcher_round.xml").write_text(xml.strip() + "\n", encoding="utf-8")
+
           values = res / "values"
           values.mkdir(parents=True, exist_ok=True)
-          (values / "ic_launcher_background.xml").write_text(
-              '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#F7A9C2</color>\n</resources>\n'
-          )
+          background_xml = """<?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <color name="ic_launcher_background">#F7A9C2</color>
+          </resources>
+          """
+          background_path = values / "ic_launcher_background.xml"
+          background_path.write_text(background_xml.strip() + "\n", encoding="utf-8")
+
+          # Fail early if any generated Android XML is malformed.
+          for xml_path in [adaptive / "ic_launcher.xml", adaptive / "ic_launcher_round.xml", background_path]:
+              ET.parse(xml_path)
+              print(f"Valid XML: {xml_path}")
 
           public = Path("public")
           for name, px in [("favicon.png",64),("icon-192.png",192),("icon-512.png",512),
