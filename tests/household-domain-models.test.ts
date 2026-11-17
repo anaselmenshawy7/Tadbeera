@@ -5,9 +5,16 @@ import { getLowStockItems, getExpiringInventoryItems, isInventoryItem } from '..
 import { sortHouseholdTasks, isHouseholdTask } from '../src/features/household/householdTaskModels';
 import { getSavingsProgress, isSavingsGoal } from '../src/features/savings/savingsModels';
 import {
+  ARABIC_WEEKDAY_OPTIONS,
+  REMINDER_REPEAT_OPTIONS,
   REMINDER_SOUND_OPTIONS,
+  formatMinuteKey,
+  formatReminderScheduleBadge,
+  getNextOccurrenceTimestamp,
   getReminderSoundOption,
   isCustomReminder,
+  normalizeRepeatDays,
+  resolveReminderRepeatType,
   resolveReminderSoundProfile,
 } from '../src/features/household/customReminderModels';
 
@@ -79,12 +86,111 @@ test('custom reminder sound profiles validate safely and keep legacy compatibili
   };
   assert.equal(isCustomReminder(legacyReminder), true);
   assert.equal(resolveReminderSoundProfile(undefined), 'gentle');
+  assert.equal(resolveReminderRepeatType(undefined), 'once');
   assert.equal(getReminderSoundOption(undefined).badgeLabel, '🎵 رنة هادئة');
 
-  assert.equal(isCustomReminder({ ...legacyReminder, soundProfile: 'alarm' }), true);
-  assert.equal(isCustomReminder({ ...legacyReminder, soundProfile: 'vibrate' }), true);
+  assert.equal(isCustomReminder({ ...legacyReminder, soundProfile: 'alarm', repeatType: 'daily' }), true);
+  assert.equal(
+    isCustomReminder({ ...legacyReminder, soundProfile: 'vibrate', repeatType: 'weekly', repeatDays: [0, 2, 4] }),
+    true
+  );
   assert.equal(isCustomReminder({ ...legacyReminder, soundProfile: 'invalid_sound' }), false);
+  assert.equal(isCustomReminder({ ...legacyReminder, repeatType: 'hourly' }), false);
+  assert.equal(isCustomReminder({ ...legacyReminder, repeatType: 'weekly', repeatDays: [7] }), false);
   assert.equal(getReminderSoundOption('alarm').channelId, 'tedbeera_alarm');
   assert.equal(getReminderSoundOption('vibrate').badgeLabel, '📳 اهتزاز فقط');
+});
+
+test('recurring reminder schedules calculate deterministic next occurrences and prevent same-minute loops', () => {
+  assert.deepEqual(
+    REMINDER_REPEAT_OPTIONS.map(o => o.value),
+    ['once', 'daily', 'weekly']
+  );
+  assert.deepEqual(
+    ARABIC_WEEKDAY_OPTIONS.map(d => [d.label, d.value]),
+    [
+      ['السبت', 6],
+      ['الأحد', 0],
+      ['الإثنين', 1],
+      ['الثلاثاء', 2],
+      ['الأربعاء', 3],
+      ['الخميس', 4],
+      ['الجمعة', 5],
+    ]
+  );
+
+  // Tuesday Nov 17, 2026 at 02:30 AM local
+  const nowBefore = new Date(2026, 10, 17, 2, 30, 0, 0);
+  const dailyReminder = {
+    date: '2026-11-17',
+    time: '02:44',
+    leadMinutes: 5 as const, // target alert at 02:39
+    repeatType: 'daily' as const,
+  };
+
+  // 1. Daily before alert time -> today at 02:39
+  const nextToday = getNextOccurrenceTimestamp(dailyReminder, nowBefore);
+  assert.equal(nextToday, new Date(2026, 10, 17, 2, 39, 0, 0).getTime());
+
+  // 2. Daily after alert time -> tomorrow (Wed Nov 18) at 02:39
+  const nowAfter = new Date(2026, 10, 17, 2, 40, 0, 0);
+  const nextTomorrow = getNextOccurrenceTimestamp(dailyReminder, nowAfter);
+  assert.equal(nextTomorrow, new Date(2026, 10, 18, 2, 39, 0, 0).getTime());
+
+  // 3. Same-minute dismiss guard: even if clock is 02:38:59 (before 02:39:00), matching lastTriggeredMinuteKey skips today
+  const sameMinuteGuard = getNextOccurrenceTimestamp(
+    {
+      ...dailyReminder,
+      lastTriggeredMinuteKey: formatMinuteKey(new Date(2026, 10, 17, 2, 39, 0, 0)),
+    },
+    new Date(2026, 10, 17, 2, 38, 30, 0)
+  );
+  assert.equal(sameMinuteGuard, new Date(2026, 10, 18, 2, 39, 0, 0).getTime());
+
+  // 4. Weekly: Tuesday Nov 17, 2026 -> selected Sun (0), Thu (4) -> nearest is Thursday Nov 19 at 02:44
+  const weeklyNext = getNextOccurrenceTimestamp(
+    {
+      date: '2026-11-17',
+      time: '02:44',
+      leadMinutes: 0,
+      repeatType: 'weekly',
+      repeatDays: [0, 4],
+    },
+    nowBefore
+  );
+  assert.equal(weeklyNext, new Date(2026, 10, 19, 2, 44, 0, 0).getTime());
+
+  // 5. Weekly midnight crossover: Saturday Nov 21, 2026 at 23:30 with Sunday 00:15 event & 30m lead -> Saturday 23:45
+  const saturdayNight = new Date(2026, 10, 21, 23, 30, 0, 0);
+  const crossMidnight = getNextOccurrenceTimestamp(
+    {
+      date: '2026-11-21',
+      time: '00:15',
+      leadMinutes: 30,
+      repeatType: 'weekly',
+      repeatDays: [0], // Sunday
+    },
+    saturdayNight
+  );
+  assert.equal(crossMidnight, new Date(2026, 10, 21, 23, 45, 0, 0).getTime());
+
+  // 6. Schedule badge formatting
+  assert.equal(
+    formatReminderScheduleBadge({
+      date: '2026-11-17',
+      time: '02:44',
+      repeatType: 'daily',
+    }),
+    'يومياً • الساعة 2:44 ص'
+  );
+  assert.equal(
+    formatReminderScheduleBadge({
+      date: '2026-11-17',
+      time: '02:44',
+      repeatType: 'weekly',
+      repeatDays: normalizeRepeatDays([4, 0, 2]),
+    }),
+    'كل: الأحد، الثلاثاء، الخميس • 2:44 ص'
+  );
 });
 

@@ -1,9 +1,17 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { LocalNotifications, type Channel } from '@capacitor/local-notifications';
 import {
+  CUSTOM_REMINDERS_UPDATED_EVENT,
+  formatArabicTime12h,
+  formatMinuteKey,
+  getLeadTimeLabel,
+  getNextOccurrenceDate,
+  resolveReminderRepeatType,
   resolveReminderSoundProfile,
+  type CustomReminder,
   type ReminderSoundProfile,
 } from '../features/household/customReminderModels';
+import { customRemindersRepository } from '../features/household/customReminderRepository';
 
 interface NotificationPermissionPlugin {
   check(): Promise<{ granted: boolean }>;
@@ -650,4 +658,80 @@ export function getLocalNotificationService(): LocalNotificationService {
     notificationServiceInstance = new CapacitorLocalNotificationServiceImpl();
   }
   return notificationServiceInstance;
+}
+
+export async function scheduleCustomReminder(
+  reminder: CustomReminder,
+  now: Date | number = new Date()
+): Promise<OneOffNotificationResult> {
+  const svc = getLocalNotificationService();
+  if (!reminder.enabled) {
+    await svc.cancelOneOffNotification(reminder.notificationId);
+    return {
+      scheduled: false,
+      mode: 'in-app',
+      message: 'التنبيه متوقف حالياً.',
+    };
+  }
+
+  const nextDate = getNextOccurrenceDate(reminder, now);
+  if (!nextDate) {
+    return {
+      scheduled: false,
+      mode: 'in-app',
+      message: 'الميعاد المحدد للتنبيه عدّى بالفعل.',
+    };
+  }
+
+  const soundProfile = resolveReminderSoundProfile(reminder.soundProfile);
+  return svc.scheduleOneOffNotification({
+    id: reminder.notificationId,
+    title: `تذكير من تدبيرة: ${reminder.title} 🔔`,
+    body: `الميعاد ${formatArabicTime12h(reminder.time)} — ${getLeadTimeLabel(reminder.leadMinutes)}`,
+    triggerAt: nextDate,
+    soundProfile,
+    channelId: getChannelIdForSoundProfile(soundProfile),
+    alarmTitle: reminder.title,
+  });
+}
+
+export async function syncAllActiveCustomReminders(now: Date | number = new Date()): Promise<void> {
+  const reminders = customRemindersRepository.read();
+  for (const reminder of reminders) {
+    if (!reminder.enabled) continue;
+    const nextDate = getNextOccurrenceDate(reminder, now);
+    if (nextDate) {
+      await scheduleCustomReminder(reminder, now);
+    }
+  }
+}
+
+export async function rescheduleReminderAfterDismissOrTrigger(
+  notificationId: number,
+  now: Date | number = new Date()
+): Promise<CustomReminder | null> {
+  const reminders = customRemindersRepository.read();
+  const target = reminders.find(r => r.notificationId === notificationId);
+  if (!target) return null;
+
+  const nowDate = typeof now === 'number' ? new Date(now) : now;
+  const minuteKey = formatMinuteKey(nowDate);
+  const updatedReminder: CustomReminder = {
+    ...target,
+    lastTriggeredMinuteKey: minuteKey,
+  };
+
+  const nextList = reminders.map(r => (r.id === target.id ? updatedReminder : r));
+  customRemindersRepository.write(nextList);
+
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent(CUSTOM_REMINDERS_UPDATED_EVENT));
+  }
+
+  const repeatType = resolveReminderRepeatType(updatedReminder.repeatType);
+  if ((repeatType === 'daily' || repeatType === 'weekly') && updatedReminder.enabled) {
+    await scheduleCustomReminder(updatedReminder, nowDate);
+  }
+
+  return updatedReminder;
 }

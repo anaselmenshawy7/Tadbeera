@@ -98,6 +98,8 @@ import {
   ALARM_DISMISS_ACTION_ID,
   getChannelIdForSoundProfile,
   getLocalNotificationService,
+  rescheduleReminderAfterDismissOrTrigger,
+  syncAllActiveCustomReminders,
 } from './services/localNotificationService';
 import {
   ALARM_DISMISS_EVENT,
@@ -107,11 +109,8 @@ import {
   type ActiveAlarmPayload,
 } from './services/reminderSoundPreview';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { customRemindersRepository } from './features/household/customReminderRepository';
 import {
-  computeReminderAlertDate,
   formatArabicTime12h,
-  getLeadTimeLabel,
   resolveReminderSoundProfile,
 } from './features/household/customReminderModels';
 import {
@@ -693,6 +692,7 @@ export default function App() {
   }, [customRecipes]);
 
   // UI Modals & Forms
+  const [isFamilySizeModalOpen, setIsFamilySizeModalOpen] = useState(false);
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemQty, setNewItemQty] = useState('1');
@@ -1359,23 +1359,13 @@ export default function App() {
   // Sync saved custom reminders globally and wire persistent alarm triggers/listeners across all tabs
   useEffect(() => {
     const svc = getLocalNotificationService();
-    const now = Date.now();
-    for (const r of customRemindersRepository.read()) {
-      if (!r.enabled) continue;
-      const alertDate = computeReminderAlertDate(r.date, r.time, r.leadMinutes);
-      if (alertDate && alertDate.getTime() > now) {
-        const soundProfile = resolveReminderSoundProfile(r.soundProfile);
-        void svc.scheduleOneOffNotification({
-          id: r.notificationId,
-          title: `تذكير: ${r.title}`,
-          body: `الميعاد ${formatArabicTime12h(r.time)} (${getLeadTimeLabel(r.leadMinutes)})`,
-          triggerAt: alertDate,
-          soundProfile,
-          channelId: getChannelIdForSoundProfile(soundProfile),
-          alarmTitle: r.title,
-        });
+    void syncAllActiveCustomReminders();
+
+    const handleVisibilityResync = () => {
+      if (document.visibilityState === 'visible') {
+        void syncAllActiveCustomReminders();
       }
-    }
+    };
 
     const handleTriggerOverlay = (event: Event) => {
       const detail = (event as CustomEvent<ActiveAlarmPayload>).detail;
@@ -1403,10 +1393,14 @@ export default function App() {
           title: detail.alarmTitle || detail.title,
         });
       } else {
+        if (typeof detail.id === 'number') {
+          void rescheduleReminderAfterDismissOrTrigger(detail.id);
+        }
         showToast(detail.title ? `🔔 ${detail.title}` : '🔔 تذكير من تدبيرة');
       }
     };
 
+    document.addEventListener('visibilitychange', handleVisibilityResync);
     window.addEventListener(ALARM_TRIGGER_EVENT, handleTriggerOverlay);
     window.addEventListener(ALARM_DISMISS_EVENT, handleDismissOverlay);
     window.addEventListener('tadbeeraCustomReminderAlert', handleWebReminderAlert);
@@ -1424,6 +1418,8 @@ export default function App() {
             id: notification.id,
             title: String(extra.alarmTitle || notification.title || ''),
           });
+        } else if (typeof notification.id === 'number') {
+          void rescheduleReminderAfterDismissOrTrigger(notification.id);
         }
       }).then((handle) => {
         receivedHandle = handle;
@@ -1436,7 +1432,9 @@ export default function App() {
           stopPersistentAlarmLoop();
           setActiveAlarm(null);
           if (typeof notification?.id === 'number') {
-            void svc.dismissDeliveredNotification(notification.id);
+            void svc.dismissDeliveredNotification(notification.id).then(() =>
+              rescheduleReminderAfterDismissOrTrigger(notification.id)
+            );
           }
           showToast('تم إيقاف المنبه 🛑');
           return;
@@ -1455,6 +1453,7 @@ export default function App() {
     }
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityResync);
       window.removeEventListener(ALARM_TRIGGER_EVENT, handleTriggerOverlay);
       window.removeEventListener(ALARM_DISMISS_EVENT, handleDismissOverlay);
       window.removeEventListener('tadbeeraCustomReminderAlert', handleWebReminderAlert);
@@ -1468,7 +1467,9 @@ export default function App() {
     stopPersistentAlarmLoop();
     setActiveAlarm(null);
     if (typeof currentId === 'number') {
-      void getLocalNotificationService().dismissDeliveredNotification(currentId);
+      void getLocalNotificationService()
+        .dismissDeliveredNotification(currentId)
+        .then(() => rescheduleReminderAfterDismissOrTrigger(currentId));
     }
     showToast('تم إيقاف المنبه 🛑');
   };
@@ -2612,11 +2613,20 @@ export default function App() {
                         <h2 className="text-xl font-extrabold mt-1">أهلاً بيكم في تدبيرة</h2>
                         <p className="text-[11px] text-white/90 mt-1 leading-5">كل احتياجات بيتكم اليومية في مكان واحد.</p>
                       </div>
-                      <div className="shrink-0 rounded-2xl bg-white/20 px-3 py-2 text-center">
-                        <Users className="w-5 h-5 mx-auto mb-1" />
+                      <button
+                        type="button"
+                        onClick={() => setIsFamilySizeModalOpen(true)}
+                        className="shrink-0 rounded-2xl bg-white/25 hover:bg-white/35 active:scale-95 px-3 py-2 text-center transition cursor-pointer border border-white/25"
+                        aria-label="تعديل عدد أفراد الأسرة"
+                        title="اضغطي لتعديل عدد أفراد الأسرة"
+                      >
+                        <div className="flex items-center justify-center gap-1 mb-1">
+                          <Users className="w-4 h-4" />
+                          <Edit3 className="w-3 h-3 text-white/90" />
+                        </div>
                         <span className="text-[10px] block">أفراد الأسرة</span>
                         <strong className="text-lg leading-none">{familySize}</strong>
-                      </div>
+                      </button>
                     </div>
                   </div>
                   <div className="flex items-end justify-between gap-2">
@@ -2909,33 +2919,6 @@ export default function App() {
                       <span className="text-[10px] text-[#FFF8FA]">تكلفة الوجبة التقديرية ومقادير الأكل حسب عدد أفراد بيتك 🇪🇬</span>
                     </div>
                     <span className="text-xs bg-white/25 text-white font-black px-2 py-0.5 rounded-lg">ج.م EGP</span>
-                  </div>
-                  {/* Family Size Scaler Bar */}
-                  <div className="bg-white p-3 rounded-2xl border border-[#F3DCE2] shadow-sm flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs">
-                      <div className="p-1.5 rounded-full bg-[#FADDE4] text-[#C96D84]">
-                        <Users className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <span className="font-bold text-[#4A353B] block">عدد أفراد الأسرة:</span>
-                        <span className="text-[10px] text-[#8E757C]">تعديل المقادير والتكلفة تلقائياً</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setFamilySize(prev => Math.max(1, prev - 1))}
-                        className="w-7 h-7 rounded-lg bg-[#FADDE4] hover:bg-[#E8A8B7]/50 text-[#C96D84] font-black text-sm flex items-center justify-center transition"
-                      >
-                        -
-                      </button>
-                      <span className="w-8 text-center font-extrabold text-[#4A353B] text-sm">{familySize}</span>
-                      <button
-                        onClick={() => setFamilySize(prev => prev + 1)}
-                        className="w-7 h-7 rounded-lg bg-[#D47E93] hover:bg-[#C96D84] text-white font-black text-sm flex items-center justify-center transition"
-                      >
-                        +
-                      </button>
-                    </div>
                   </div>
 
                   {/* Phase 4D: Weekly Meal Plan Banner & Feature Gate */}
@@ -5841,6 +5824,102 @@ export default function App() {
                 حفظ وإضافة
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isFamilySizeModalOpen && (
+        <div
+          dir="rtl"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="family-size-modal-title"
+          className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4"
+        >
+          <div className="bg-[#FFFFFF] w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] space-y-4">
+            <div className="flex items-center justify-between border-b border-[#F3DCE2] pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center">
+                  <Users className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 id="family-size-modal-title" className="font-extrabold text-sm text-[#4A353B]">
+                    تحديد عدد أفراد الأسرة
+                  </h3>
+                  <p className="text-[10px] text-[#8E757C]">
+                    يضبط مقادير الوصفات وخطة الأسبوع تلقائياً
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFamilySizeModalOpen(false)}
+                className="text-[#8E757C] hover:text-[#4A353B]"
+                aria-label="إغلاق"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between bg-[#FFF8FA] border border-[#F3DCE2] rounded-2xl p-3">
+              <button
+                type="button"
+                onClick={() => setFamilySize(prev => Math.max(1, prev - 1))}
+                disabled={familySize <= 1}
+                className="w-10 h-10 rounded-xl bg-[#FADDE4] hover:bg-[#E8A8B7]/60 disabled:opacity-45 text-[#C96D84] font-black text-lg flex items-center justify-center transition"
+                aria-label="إنقاص عدد أفراد الأسرة"
+              >
+                -
+              </button>
+              <div className="text-center">
+                <strong className="text-2xl font-black text-[#4A353B] tabular-nums block leading-none">
+                  {familySize}
+                </strong>
+                <span className="text-[11px] font-bold text-[#8E757C]">
+                  {familySize === 1 ? 'فرد واحد' : familySize === 2 ? 'فردين' : 'أفراد'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFamilySize(prev => Math.min(15, prev + 1))}
+                disabled={familySize >= 15}
+                className="w-10 h-10 rounded-xl bg-[#D47E93] hover:bg-[#C96D84] disabled:opacity-45 text-white font-black text-lg flex items-center justify-center transition"
+                aria-label="زيادة عدد أفراد الأسرة"
+              >
+                +
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-bold text-[#8E757C] block">اختيار سريع:</span>
+              <div className="grid grid-cols-7 gap-1.5">
+                {[2, 3, 4, 5, 6, 7, 8].map(count => {
+                  const isActive = count === 8 ? familySize >= 8 : familySize === count;
+                  return (
+                    <button
+                      key={count}
+                      type="button"
+                      onClick={() => setFamilySize(count)}
+                      className={`min-h-[36px] rounded-xl border text-xs font-extrabold transition ${
+                        isActive
+                          ? 'bg-[#D47E93] border-[#D47E93] text-white shadow-xs'
+                          : 'bg-[#FFF8FA] border-[#F3DCE2] text-[#4A353B] hover:border-[#D47E93]'
+                      }`}
+                    >
+                      {count === 8 ? '8+' : count}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsFamilySizeModalOpen(false)}
+              className="w-full min-h-[42px] bg-[#D47E93] hover:bg-[#C96D84] text-white font-extrabold py-2.5 rounded-xl text-xs transition"
+            >
+              تم
+            </button>
           </div>
         </div>
       )}

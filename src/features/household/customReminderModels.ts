@@ -2,6 +2,10 @@ export type ReminderLeadMinutes = 0 | 5 | 15 | 30 | 60;
 
 export type ReminderSoundProfile = 'alarm' | 'gentle' | 'vibrate';
 
+export type ReminderRepeatType = 'once' | 'daily' | 'weekly';
+
+export const CUSTOM_REMINDERS_UPDATED_EVENT = 'tedbeeraCustomRemindersUpdated';
+
 export interface ReminderSoundOption {
   value: ReminderSoundProfile;
   channelId: 'tedbeera_alarm' | 'tedbeera_gentle' | 'tedbeera_vibrate';
@@ -38,6 +42,28 @@ export const REMINDER_SOUND_OPTIONS: ReadonlyArray<ReminderSoundOption> = [
   },
 ];
 
+export const REMINDER_REPEAT_OPTIONS: ReadonlyArray<{
+  value: ReminderRepeatType;
+  label: string;
+}> = [
+  { value: 'once', label: 'مرة واحدة' },
+  { value: 'daily', label: 'كل يوم' },
+  { value: 'weekly', label: 'أيام محددة' },
+];
+
+export const ARABIC_WEEKDAY_OPTIONS: ReadonlyArray<{
+  value: number;
+  label: string;
+}> = [
+  { value: 6, label: 'السبت' },
+  { value: 0, label: 'الأحد' },
+  { value: 1, label: 'الإثنين' },
+  { value: 2, label: 'الثلاثاء' },
+  { value: 3, label: 'الأربعاء' },
+  { value: 4, label: 'الخميس' },
+  { value: 5, label: 'الجمعة' },
+];
+
 export interface CustomReminder {
   id: string;
   notificationId: number;
@@ -46,6 +72,9 @@ export interface CustomReminder {
   time: string; // HH:mm
   leadMinutes: ReminderLeadMinutes;
   soundProfile?: ReminderSoundProfile;
+  repeatType?: ReminderRepeatType;
+  repeatDays?: number[]; // 0 = Sun .. 6 = Sat
+  lastTriggeredMinuteKey?: string; // YYYY-MM-DDTHH:mm
   enabled: boolean;
   createdAt: string;
 }
@@ -56,6 +85,26 @@ export function isReminderSoundProfile(value: unknown): value is ReminderSoundPr
 
 export function resolveReminderSoundProfile(value?: unknown): ReminderSoundProfile {
   return isReminderSoundProfile(value) ? value : 'gentle';
+}
+
+export function isReminderRepeatType(value: unknown): value is ReminderRepeatType {
+  return value === 'once' || value === 'daily' || value === 'weekly';
+}
+
+export function resolveReminderRepeatType(value?: unknown): ReminderRepeatType {
+  return isReminderRepeatType(value) ? value : 'once';
+}
+
+export function normalizeRepeatDays(days?: unknown): number[] {
+  if (!Array.isArray(days)) return [];
+  const unique = new Set<number>();
+  for (const d of days) {
+    if (typeof d === 'number' && Number.isInteger(d) && d >= 0 && d <= 6) {
+      unique.add(d);
+    }
+  }
+  const rtlOrder = new Map(ARABIC_WEEKDAY_OPTIONS.map((opt, idx) => [opt.value, idx]));
+  return Array.from(unique).sort((a, b) => (rtlOrder.get(a) ?? a) - (rtlOrder.get(b) ?? b));
 }
 
 export function getReminderSoundOption(profile?: unknown): ReminderSoundOption {
@@ -90,6 +139,13 @@ export function isCustomReminder(value: unknown): value is CustomReminder {
   if (!value || typeof value !== 'object') return false;
   const r = value as Partial<CustomReminder>;
   const validSoundProfile = r.soundProfile === undefined || isReminderSoundProfile(r.soundProfile);
+  const validRepeatType = r.repeatType === undefined || isReminderRepeatType(r.repeatType);
+  const validRepeatDays =
+    r.repeatDays === undefined ||
+    (Array.isArray(r.repeatDays) &&
+      r.repeatDays.every(d => typeof d === 'number' && Number.isInteger(d) && d >= 0 && d <= 6));
+  const validLastTriggered =
+    r.lastTriggeredMinuteKey === undefined || typeof r.lastTriggeredMinuteKey === 'string';
   return (
     typeof r.id === 'string' &&
     r.id.trim().length > 0 &&
@@ -105,9 +161,22 @@ export function isCustomReminder(value: unknown): value is CustomReminder {
     typeof r.leadMinutes === 'number' &&
     [0, 5, 15, 30, 60].includes(r.leadMinutes) &&
     validSoundProfile &&
+    validRepeatType &&
+    validRepeatDays &&
+    validLastTriggered &&
     typeof r.enabled === 'boolean' &&
     typeof r.createdAt === 'string'
   );
+}
+
+export function formatMinuteKey(date: Date | number): string {
+  const d = typeof date === 'number' ? new Date(date) : date;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
 }
 
 /**
@@ -129,6 +198,115 @@ export function computeReminderAlertDate(
   if (Number.isNaN(eventDate.getTime())) return null;
   const safeLead = Number.isFinite(leadMinutes) && leadMinutes >= 0 ? leadMinutes : 0;
   return new Date(eventDate.getTime() - safeLead * 60 * 1000);
+}
+
+/**
+ * Deterministic next upcoming alert timestamp (in epoch ms) for once, daily, or weekly reminders.
+ * Accounts for leadMinutes and prevents same-minute re-triggers via lastTriggeredMinuteKey.
+ */
+export function getNextOccurrenceTimestamp(
+  reminder: Pick<
+    CustomReminder,
+    'date' | 'time' | 'leadMinutes' | 'repeatType' | 'repeatDays' | 'lastTriggeredMinuteKey'
+  >,
+  now: Date | number = new Date()
+): number | null {
+  const timeMatch = reminder.time.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!timeMatch) return null;
+
+  const hours = Number(timeMatch[1]);
+  const minutes = Number(timeMatch[2]);
+  const safeLead =
+    Number.isFinite(reminder.leadMinutes) && reminder.leadMinutes >= 0 ? reminder.leadMinutes : 0;
+  const nowMs = typeof now === 'number' ? now : now.getTime();
+  const nowDate = new Date(nowMs);
+  const repeatType = resolveReminderRepeatType(reminder.repeatType);
+  const blockedMinuteKey = reminder.lastTriggeredMinuteKey;
+
+  if (repeatType === 'once') {
+    const alertDate = computeReminderAlertDate(reminder.date, reminder.time, safeLead);
+    if (!alertDate) return null;
+    if (alertDate.getTime() <= nowMs) return null;
+    if (blockedMinuteKey && formatMinuteKey(alertDate) === blockedMinuteKey) return null;
+    return alertDate.getTime();
+  }
+
+  if (repeatType === 'daily') {
+    for (let dayOffset = 0; dayOffset <= 2; dayOffset++) {
+      const eventDate = new Date(
+        nowDate.getFullYear(),
+        nowDate.getMonth(),
+        nowDate.getDate() + dayOffset,
+        hours,
+        minutes,
+        0,
+        0
+      );
+      const alertMs = eventDate.getTime() - safeLead * 60 * 1000;
+      if (alertMs <= nowMs) continue;
+      if (blockedMinuteKey && formatMinuteKey(alertMs) === blockedMinuteKey) continue;
+      return alertMs;
+    }
+    return null;
+  }
+
+  // repeatType === 'weekly'
+  const selectedDays = normalizeRepeatDays(reminder.repeatDays);
+  if (selectedDays.length === 0) return null;
+  const selectedDaySet = new Set(selectedDays);
+
+  for (let dayOffset = 0; dayOffset <= 8; dayOffset++) {
+    const eventDate = new Date(
+      nowDate.getFullYear(),
+      nowDate.getMonth(),
+      nowDate.getDate() + dayOffset,
+      hours,
+      minutes,
+      0,
+      0
+    );
+    if (!selectedDaySet.has(eventDate.getDay())) continue;
+    const alertMs = eventDate.getTime() - safeLead * 60 * 1000;
+    if (alertMs <= nowMs) continue;
+    if (blockedMinuteKey && formatMinuteKey(alertMs) === blockedMinuteKey) continue;
+    return alertMs;
+  }
+
+  return null;
+}
+
+export function getNextOccurrenceDate(
+  reminder: Pick<
+    CustomReminder,
+    'date' | 'time' | 'leadMinutes' | 'repeatType' | 'repeatDays' | 'lastTriggeredMinuteKey'
+  >,
+  now: Date | number = new Date()
+): Date | null {
+  const ts = getNextOccurrenceTimestamp(reminder, now);
+  return ts !== null ? new Date(ts) : null;
+}
+
+export function formatReminderScheduleBadge(
+  reminder: Pick<CustomReminder, 'date' | 'time' | 'repeatType' | 'repeatDays'>
+): string {
+  const repeatType = resolveReminderRepeatType(reminder.repeatType);
+  const formattedTime = formatArabicTime12h(reminder.time);
+
+  if (repeatType === 'daily') {
+    return `يومياً • الساعة ${formattedTime}`;
+  }
+
+  if (repeatType === 'weekly') {
+    const days = normalizeRepeatDays(reminder.repeatDays);
+    if (days.length === 0) {
+      return `أيام محددة • ${formattedTime}`;
+    }
+    const labelMap = new Map(ARABIC_WEEKDAY_OPTIONS.map(opt => [opt.value, opt.label]));
+    const names = days.map(d => labelMap.get(d) || '').filter(Boolean);
+    return `كل: ${names.join('، ')} • ${formattedTime}`;
+  }
+
+  return `${formatArabicShortDate(reminder.date)} • ${formattedTime}`;
 }
 
 export function formatArabicTime12h(dateOrTime: Date | string): string {
@@ -162,9 +340,12 @@ export function getLeadTimeLabel(leadMinutes: number): string {
   return found ? found.label : `قبلها بـ ${leadMinutes} دقيقة`;
 }
 
-export function sortCustomReminders(reminders: CustomReminder[]): CustomReminder[] {
+export function sortCustomReminders(reminders: CustomReminder[], now: number = Date.now()): CustomReminder[] {
   return [...reminders].sort((a, b) => {
     if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+    const nextA = getNextOccurrenceTimestamp(a, now) ?? Number.MAX_SAFE_INTEGER;
+    const nextB = getNextOccurrenceTimestamp(b, now) ?? Number.MAX_SAFE_INTEGER;
+    if (nextA !== nextB) return nextA - nextB;
     const keyA = `${a.date}T${a.time}`;
     const keyB = `${b.date}T${b.time}`;
     return keyA.localeCompare(keyB) || a.createdAt.localeCompare(b.createdAt);
