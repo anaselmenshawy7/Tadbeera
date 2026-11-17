@@ -41,7 +41,9 @@ import {
   Unlock,
   ExternalLink,
   Volume2,
-  VolumeX
+  VolumeX,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import {
   COMMON_INGREDIENTS,
@@ -144,8 +146,24 @@ const IngredientRecipeFinder = React.lazy(() =>
   import('./features/recipes/IngredientRecipeFinder').then(module => ({ default: module.IngredientRecipeFinder }))
 );
 import { householdProfileRepository } from './features/household/householdRepository';
+import { inventoryRepository } from './features/inventory/inventoryRepository';
 import { financeTransactionsRepository } from './features/finance/financeRepository';
 import { isFinanceTransaction, type FinanceTransaction } from './features/finance/financeModels';
+import {
+  fetchRealEgyptMarketPrice,
+  formatMarketSyncDateTime,
+  getAllVerifiedEgyptPrices,
+  getLastMarketSyncTimestamp,
+  getVerifiedEgyptPrice,
+  lookupEgypt2026MarketPrice,
+  normalizeMarketItemKey,
+  purgeStalePriceCaches,
+  recordMarketSyncTimestamp,
+  revalidateVerifiedPriceCache,
+  saveVerifiedEgyptPrice,
+  validatePriceForUnit,
+  VERIFIED_PRICES_UPDATED_EVENT,
+} from './services/egyptMarketPriceService';
 
 import type { ActiveTab, MealTypeFilter } from './app/navigation';
 
@@ -234,6 +252,17 @@ function renderCategoryIcon(iconName?: string, className = "w-4 h-4") {
       return <Tag className={className} />;
   }
 }
+
+const POWDER_PINK_DONUT_PALETTE = [
+  '#D47E93',
+  '#E8A8B7',
+  '#C96D84',
+  '#B55D74',
+  '#4A353B',
+  '#8E757C',
+  '#FADDE4',
+  '#9E5368',
+];
 
 export default function App() {
   const isNativeApp = Capacitor.isNativePlatform();
@@ -491,24 +520,97 @@ export default function App() {
     }
   });
 
-  // Shopping Items with Safe Migration & NaN Prevention
+  // Shopping Items with Safe Migration, Stale Cache Purge & Universal Price Guardrail Validation
   const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>(() => {
+    purgeStalePriceCaches();
+    revalidateVerifiedPriceCache();
+
+    const resolveInitialPrice = (name: string, unit: string) =>
+      getVerifiedEgyptPrice(name, unit) || lookupEgypt2026MarketPrice(name, unit);
+
+    const buildInitialSample = (id: string, name: string, quantity: number, unit: string, isChecked: boolean): ShoppingItem => {
+      const verified = resolveInitialPrice(name, unit);
+      return {
+        id,
+        name,
+        quantity,
+        unit,
+        unitPrice: verified ? verified.typicalPrice : null,
+        isChecked,
+        ...(verified
+          ? {
+              priceSource: verified.source,
+              priceUpdatedAt: verified.fetchedAt,
+              priceSourceLabel: verified.sourceLabel,
+            }
+          : {}),
+      };
+    };
+
     try {
       const stored = localStorage.getItem('tedbeera_shopping_items');
+      const v4Migrated = localStorage.getItem('tedbeera_egypt_prices_v4_migrated') === '1';
       if (stored) {
         const raw = JSON.parse(stored);
         const normalized = normalizeShoppingItemsList(raw);
-        if (normalized.length > 0) return normalized;
+        if (normalized.length > 0) {
+          const sanitized = normalized.map(item => {
+            if (item.priceSource === 'user_verified' && item.unitPrice !== null && item.unitPrice > 0) {
+              return item;
+            }
+            // Erase pre-v4 unverified/stale market prices (like 10 EGP bread or null tomatoes) on first v4 load
+            if (!v4Migrated) {
+              const v4Resolved = resolveInitialPrice(item.name, item.unit);
+              return {
+                ...item,
+                unitPrice: v4Resolved ? v4Resolved.typicalPrice : null,
+                priceSource: v4Resolved ? v4Resolved.source : null,
+                priceUpdatedAt: v4Resolved ? v4Resolved.fetchedAt : null,
+                priceSourceLabel: v4Resolved ? v4Resolved.sourceLabel : null,
+              };
+            }
+            if (item.unitPrice !== null && !validatePriceForUnit(item.name, item.unit, item.unitPrice).isValid) {
+              const fallback2026 = resolveInitialPrice(item.name, item.unit);
+              return {
+                ...item,
+                unitPrice: fallback2026 ? fallback2026.typicalPrice : null,
+                priceSource: fallback2026 ? fallback2026.source : null,
+                priceUpdatedAt: fallback2026 ? fallback2026.fetchedAt : null,
+                priceSourceLabel: fallback2026 ? fallback2026.sourceLabel : null,
+              };
+            }
+            if (item.unitPrice === null) {
+              const fallback2026 = resolveInitialPrice(item.name, item.unit);
+              if (fallback2026) {
+                return {
+                  ...item,
+                  unitPrice: fallback2026.typicalPrice,
+                  priceSource: fallback2026.source,
+                  priceUpdatedAt: fallback2026.fetchedAt,
+                  priceSourceLabel: fallback2026.sourceLabel,
+                };
+              }
+            }
+            return item;
+          });
+          if (!v4Migrated) {
+            localStorage.setItem('tedbeera_egypt_prices_v4_migrated', '1');
+          }
+          return sanitized;
+        }
+      }
+      if (!v4Migrated) {
+        localStorage.setItem('tedbeera_egypt_prices_v4_migrated', '1');
       }
       return [
-        { id: '1', name: 'عدس أصفر', quantity: 1, unit: 'كوب', unitPrice: 25, isChecked: false },
-        { id: '2', name: 'طماطم مسبكة', quantity: 4, unit: 'حبة', unitPrice: 5, isChecked: true },
-        { id: '3', name: 'عيش بلدي سخن', quantity: 10, unit: 'رغيف', unitPrice: null, isChecked: false } // Sample unpriced item
+        buildInitialSample('1', 'عدس أصفر', 1, 'كيلو', false),
+        buildInitialSample('2', 'طماطم', 2, 'كيلو', true),
+        buildInitialSample('3', 'عيش بلدي سخن', 10, 'رغيف', false),
       ];
     } catch {
       return [
-        { id: '1', name: 'عدس أصفر', quantity: 1, unit: 'كوب', unitPrice: 25, isChecked: false },
-        { id: '2', name: 'طماطم مسبكة', quantity: 4, unit: 'حبة', unitPrice: 5, isChecked: true }
+        buildInitialSample('1', 'عدس أصفر', 1, 'كيلو', false),
+        buildInitialSample('2', 'طماطم', 2, 'كيلو', true),
       ];
     }
   });
@@ -597,8 +699,18 @@ export default function App() {
   const [newItemUnit, setNewItemUnit] = useState('حبة');
   const [newItemUnitPrice, setNewItemUnitPrice] = useState(''); // Empty by default to support unpriced items explicitly
 
-  // Edit Item Price Modal
-  const [editingPriceItem, setEditingPriceItem] = useState<{ id: string; name: string; currentPrice: string } | null>(null);
+  // Edit Item Price Modal & Live Market Price Sync States
+  const [editingPriceItem, setEditingPriceItem] = useState<{
+    id: string;
+    name: string;
+    unit: string;
+    currentPrice: string;
+  } | null>(null);
+  const [fetchingPriceKeys, setFetchingPriceKeys] = useState<Record<string, boolean>>({});
+  const [isRefreshingMarketPrices, setIsRefreshingMarketPrices] = useState(false);
+  const [isFetchingSingleModalPrice, setIsFetchingSingleModalPrice] = useState(false);
+  const [lastMarketSyncAt, setLastMarketSyncAt] = useState<string | null>(() => getLastMarketSyncTimestamp());
+  const attemptedAutoLookupKeysRef = useRef<Set<string>>(new Set());
 
   // Expense Modal
   const [isAddExpenseModalOpen, setIsAddExpenseModalOpen] = useState(false);
@@ -919,7 +1031,14 @@ export default function App() {
             quantity: Math.round((currentList[existingIndex].quantity + newItem.quantity) * 10) / 10
           };
         } else {
-          currentList.push(newItem);
+          const verified = getVerifiedEgyptPrice(newItem.name, newItem.unit) || lookupEgypt2026MarketPrice(newItem.name, newItem.unit);
+          currentList.push({
+            ...newItem,
+            unitPrice: verified ? verified.typicalPrice : null,
+            priceSource: verified ? verified.source : null,
+            priceUpdatedAt: verified ? verified.fetchedAt : null,
+            priceSourceLabel: verified ? verified.sourceLabel : null,
+          });
         }
       });
       return currentList;
@@ -1017,6 +1136,117 @@ export default function App() {
       localStorage.setItem('tedbeera_shopping_items', JSON.stringify(shoppingItems));
     } catch {}
   }, [shoppingItems]);
+
+  // Keep verified market prices synchronized across Shopping List and Pantry Stock
+  useEffect(() => {
+    const syncCachedPrices = () => {
+      const cachedMap = getAllVerifiedEgyptPrices();
+      setLastMarketSyncAt(getLastMarketSyncTimestamp());
+      setShoppingItems(prev => {
+        let changed = false;
+        const next = prev.map(item => {
+          const key = normalizeMarketItemKey(item.name, item.unit);
+          const cached = cachedMap[key];
+          if (!cached) return item;
+          if (
+            item.unitPrice === null ||
+            (cached.fetchedAt !== item.priceUpdatedAt && item.priceSource !== 'user_verified')
+          ) {
+            changed = true;
+            return {
+              ...item,
+              unitPrice: cached.typicalPrice,
+              priceSource: cached.source,
+              priceUpdatedAt: cached.fetchedAt,
+              priceSourceLabel: cached.sourceLabel,
+            };
+          }
+          return item;
+        });
+        return changed ? next : prev;
+      });
+    };
+
+    window.addEventListener(VERIFIED_PRICES_UPDATED_EVENT, syncCachedPrices);
+    return () => window.removeEventListener(VERIFIED_PRICES_UPDATED_EVENT, syncCachedPrices);
+  }, []);
+
+  // Auto-apply verified 2026 Egyptian market prices immediately & fetch live updates when online
+  useEffect(() => {
+    const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+    const cachedApplyUpdates: Record<string, ReturnType<typeof getVerifiedEgyptPrice>> = {};
+    const toFetch: Array<{ key: string; name: string; unit: string }> = [];
+
+    for (const item of shoppingItems) {
+      if (item.unitPrice !== null) continue;
+      const key = normalizeMarketItemKey(item.name, item.unit);
+      const cached = getVerifiedEgyptPrice(item.name, item.unit) || lookupEgypt2026MarketPrice(item.name, item.unit);
+      if (cached) {
+        cachedApplyUpdates[key] = cached;
+        continue;
+      }
+      if (isOnline && !attemptedAutoLookupKeysRef.current.has(key) && !fetchingPriceKeys[key]) {
+        attemptedAutoLookupKeysRef.current.add(key);
+        toFetch.push({ key, name: item.name, unit: item.unit });
+      }
+    }
+
+    if (Object.keys(cachedApplyUpdates).length > 0) {
+      setShoppingItems(prev =>
+        prev.map(item => {
+          if (item.unitPrice !== null) return item;
+          const key = normalizeMarketItemKey(item.name, item.unit);
+          const cached = cachedApplyUpdates[key];
+          if (!cached) return item;
+          return {
+            ...item,
+            unitPrice: cached.typicalPrice,
+            priceSource: cached.source,
+            priceUpdatedAt: cached.fetchedAt,
+            priceSourceLabel: cached.sourceLabel,
+          };
+        })
+      );
+    }
+
+    if (!isOnline || toFetch.length === 0) return;
+
+    let cancelled = false;
+    toFetch.forEach(({ key, name, unit }) => {
+      setFetchingPriceKeys(prev => ({ ...prev, [key]: true }));
+      void fetchRealEgyptMarketPrice(name, unit)
+        .then(record => {
+          if (cancelled || !record) return;
+          setLastMarketSyncAt(record.fetchedAt);
+          setShoppingItems(prev =>
+            prev.map(item => {
+              if (item.unitPrice !== null) return item;
+              if (normalizeMarketItemKey(item.name, item.unit) !== key) return item;
+              return {
+                ...item,
+                unitPrice: record.typicalPrice,
+                priceSource: 'live_market',
+                priceUpdatedAt: record.fetchedAt,
+                priceSourceLabel: record.sourceLabel,
+              };
+            })
+          );
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setFetchingPriceKeys(prev => {
+              const next = { ...prev };
+              delete next[key];
+              return next;
+            });
+          }
+        });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, shoppingItems]);
 
   useEffect(() => {
     try {
@@ -1538,14 +1768,21 @@ export default function App() {
             isChecked: false // Reset check state if more is needed
           };
         } else {
-          // Add new item with unpriced status (or estimate if common)
+          const verified = getVerifiedEgyptPrice(normalizedName, normalizedUnit) || lookupEgypt2026MarketPrice(normalizedName, normalizedUnit);
           updated.push({
             id: Math.random().toString(36).substring(2, 9),
             name: normalizedName,
             quantity: scaledAmt,
             unit: normalizedUnit,
-            unitPrice: null, // Marked as "السعر غير محدد" explicitly
-            isChecked: false
+            unitPrice: verified ? verified.typicalPrice : null,
+            isChecked: false,
+            ...(verified
+              ? {
+                  priceSource: verified.source,
+                  priceUpdatedAt: verified.fetchedAt,
+                  priceSourceLabel: verified.sourceLabel,
+                }
+              : {}),
           });
         }
       });
@@ -1575,13 +1812,21 @@ export default function App() {
           isChecked: false
         };
       } else {
+        const verified = getVerifiedEgyptPrice(normalizedName, normalizedUnit) || lookupEgypt2026MarketPrice(normalizedName, normalizedUnit);
         updated.push({
           id: Math.random().toString(36).substring(2, 9),
           name: normalizedName,
           quantity: safeQty,
           unit: normalizedUnit,
-          unitPrice: null,
-          isChecked: false
+          unitPrice: verified ? verified.typicalPrice : null,
+          isChecked: false,
+          ...(verified
+            ? {
+                priceSource: verified.source,
+                priceUpdatedAt: verified.fetchedAt,
+                priceSourceLabel: verified.sourceLabel,
+              }
+            : {}),
         });
       }
 
@@ -1831,20 +2076,153 @@ export default function App() {
     }));
   };
 
-  // Set or Edit Item Unit Price
+  // Set or Edit Item Unit Price (saves user-verified EGP price cleanly)
   const handleSaveItemPrice = () => {
     if (!editingPriceItem) return;
     const parsed = parseSafePrice(editingPriceItem.currentPrice);
+    const nowIso = new Date().toISOString();
+
+    if (parsed !== null && parsed > 0) {
+      saveVerifiedEgyptPrice({
+        itemName: editingPriceItem.name,
+        unit: editingPriceItem.unit,
+        typicalPrice: parsed,
+        source: 'user_verified',
+        sourceLabel: 'سعرك المسجل',
+        fetchedAt: nowIso,
+      });
+    }
 
     setShoppingItems(prev => prev.map(item => {
       if (item.id === editingPriceItem.id) {
-        return { ...item, unitPrice: parsed };
+        return {
+          ...item,
+          unitPrice: parsed !== null && parsed > 0 ? parsed : null,
+          priceSource: parsed !== null && parsed > 0 ? 'user_verified' : null,
+          priceUpdatedAt: parsed !== null && parsed > 0 ? nowIso : null,
+          priceSourceLabel: parsed !== null && parsed > 0 ? 'سعرك المسجل' : null,
+        };
       }
       return item;
     }));
 
     setEditingPriceItem(null);
-    showToast(parsed !== null ? 'تم تحديث السعر وإعادة الحساب فوراً 🏷️' : 'تم تعيين الصنف كغير مسعر');
+    showToast(
+      parsed !== null && parsed > 0
+        ? 'تم حفظ سعرك المسجل وتحديث الإجمالي فوراً 🏷️'
+        : 'تم مسح السعر — يمكنك إدخاله أو جلبه من السوق لاحقاً'
+    );
+  };
+
+  const handleFetchModalLivePrice = async () => {
+    if (!editingPriceItem) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      showToast('أنتِ غير متصلة بالإنترنت حالياً — يمكنك كتابة السعر يدوياً 📶');
+      return;
+    }
+    setIsFetchingSingleModalPrice(true);
+    try {
+      const record = await fetchRealEgyptMarketPrice(editingPriceItem.name, editingPriceItem.unit);
+      if (record) {
+        setEditingPriceItem(prev =>
+          prev ? { ...prev, currentPrice: String(record.typicalPrice) } : null
+        );
+        setLastMarketSyncAt(record.fetchedAt);
+        showToast(`تم جلب سعر السوق المصري: ${record.typicalPrice} ج.م 🔄`);
+      } else {
+        showToast('لم نجد سعراً مؤكداً لهذا الصنف حالياً — يمكنك كتابته يدوياً');
+      }
+    } finally {
+      setIsFetchingSingleModalPrice(false);
+    }
+  };
+
+  const handleRefreshMarketPrices = async () => {
+    if (isRefreshingMarketPrices) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      showToast('أنتِ غير متصلة بالإنترنت حالياً — تأكدي من الاتصال لتحديث أسعار السوق 📶');
+      return;
+    }
+
+    const pantryItems = inventoryRepository.read();
+    const uniqueTargets = new Map<string, { name: string; unit: string }>();
+    shoppingItems.forEach(item => {
+      uniqueTargets.set(normalizeMarketItemKey(item.name, item.unit), {
+        name: item.name,
+        unit: item.unit,
+      });
+    });
+    pantryItems.forEach(item => {
+      uniqueTargets.set(normalizeMarketItemKey(item.name, item.unit), {
+        name: item.name,
+        unit: item.unit,
+      });
+    });
+
+    if (uniqueTargets.size === 0) {
+      showToast('أضيفي أصنافاً أولاً لتحديث أسعارها من السوق المصري');
+      return;
+    }
+
+    setIsRefreshingMarketPrices(true);
+    const fetchingMap: Record<string, boolean> = {};
+    uniqueTargets.forEach((_v, key) => {
+      fetchingMap[key] = true;
+    });
+    setFetchingPriceKeys(prev => ({ ...prev, ...fetchingMap }));
+
+    try {
+      const targetList = Array.from(uniqueTargets.entries());
+      const resolvedByKey: Record<string, Awaited<ReturnType<typeof fetchRealEgyptMarketPrice>>> = {};
+
+      // Fetch in small parallel batches of 3 to stay fast & friendly
+      for (let i = 0; i < targetList.length; i += 3) {
+        const batch = targetList.slice(i, i + 3);
+        const batchResults = await Promise.all(
+          batch.map(async ([key, target]) => {
+            const record = await fetchRealEgyptMarketPrice(target.name, target.unit);
+            return [key, record] as const;
+          })
+        );
+        batchResults.forEach(([key, record]) => {
+          if (record) resolvedByKey[key] = record;
+        });
+      }
+
+      const updatedCount = Object.keys(resolvedByKey).length;
+      const syncIso = recordMarketSyncTimestamp();
+      setLastMarketSyncAt(syncIso);
+
+      if (updatedCount > 0) {
+        setShoppingItems(prev =>
+          prev.map(item => {
+            if (item.priceSource === 'user_verified') return item;
+            const key = normalizeMarketItemKey(item.name, item.unit);
+            const record = resolvedByKey[key];
+            if (!record) return item;
+            return {
+              ...item,
+              unitPrice: record.typicalPrice,
+              priceSource: 'live_market',
+              priceUpdatedAt: record.fetchedAt,
+              priceSourceLabel: record.sourceLabel,
+            };
+          })
+        );
+        showToast(`تم تحديث ${updatedCount} صنف من أسعار السوق المصري الحقيقية 🔄`);
+      } else {
+        showToast('تعذر سحب أسعار جديدة الآن — يمكنك إدخال الأسعار يدوياً بالضغط على أدخلي السعر +');
+      }
+    } finally {
+      setIsRefreshingMarketPrices(false);
+      setFetchingPriceKeys(prev => {
+        const next = { ...prev };
+        uniqueTargets.forEach((_v, key) => {
+          delete next[key];
+        });
+        return next;
+      });
+    }
   };
 
   // Feature 1: Share Unpurchased Shopping List via WhatsApp (WebView & PWA safe)
@@ -2188,11 +2566,11 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen h-[100dvh] w-full overflow-hidden bg-[#FBF8F1] text-[#3F4037] font-['Cairo',sans-serif] flex flex-col">
+    <div className="min-h-screen h-[100dvh] w-full overflow-hidden bg-[#FFF8FA] text-[#4A353B] font-['Cairo',sans-serif] flex flex-col">
       {/* Toast Notification */}
       {toastMessage && (
-        <div role="status" aria-live="polite" className="fixed top-[calc(env(safe-area-inset-top)+12px)] left-3 right-3 z-[100] mx-auto max-w-md bg-[#626B49] text-white px-5 py-3 rounded-xl shadow-xl flex items-center justify-center gap-2 border border-[#D8C69A]">
-          <Sparkles className="w-4 h-4 text-[#FFE54C]" />
+        <div role="status" aria-live="polite" className="fixed top-[calc(env(safe-area-inset-top)+12px)] left-3 right-3 z-[100] mx-auto max-w-md bg-[#4A353B] text-white px-5 py-3 rounded-xl shadow-xl flex items-center justify-center gap-2 border border-[#F3DCE2]">
+          <Sparkles className="w-4 h-4 text-[#FADDE4]" />
           <span className="text-sm font-bold">{toastMessage}</span>
         </div>
       )}
@@ -2200,7 +2578,7 @@ export default function App() {
       {/* MAIN FULL-SCREEN APP CONTAINER */}
       <main className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Top App Bar */}
-        <header className="tadbeera-appbar bg-[#F5F0E5] text-[#43523D] pt-[env(safe-area-inset-top)] shadow-sm border-b border-[#E8E0D1] shrink-0">
+        <header className="tadbeera-appbar bg-[#FFF8FA] text-[#4A353B] pt-[env(safe-area-inset-top)] shadow-sm border-b border-[#F3DCE2] shrink-0">
           <div className="w-full max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xl shrink-0">🇪🇬</span>
@@ -2211,7 +2589,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsSettingsModalOpen(true)}
-                className="p-1.5 rounded-lg bg-[#E8EDDF] hover:bg-[#DCE5D3] text-[#5F7651] transition"
+                className="p-1.5 rounded-lg bg-[#FADDE4] hover:bg-[#E8A8B7]/40 text-[#C96D84] transition"
                 title="إعدادات وأمان البيانات"
                 aria-label="إعدادات وأمان البيانات"
               >
@@ -2222,19 +2600,19 @@ export default function App() {
         </header>
 
         {/* Scrollable Screen Content with shared layout clearance ensuring 70-90px breathing room */}
-        <div className={`tadbeera-screen-content flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 bg-[#FBF8F1] [&>*]:max-w-2xl [&>*]:mx-auto [&>*]:w-full ${isNativeApp ? "pb-[calc(7.5rem+env(safe-area-inset-bottom))]" : "pb-[calc(1.5rem+env(safe-area-inset-bottom))]"}`}>
+        <div className={`tadbeera-screen-content flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 bg-[#FFF8FA] [&>*]:max-w-2xl [&>*]:mx-auto [&>*]:w-full ${isNativeApp ? "pb-[calc(7.5rem+env(safe-area-inset-bottom))]" : "pb-[calc(1.5rem+env(safe-area-inset-bottom))]"}`}>
 
 
               {activeTab === 'home' && (
                 <section className="space-y-3.5" dir="rtl" aria-label="الرئيسية">
-                  <div className="rounded-[26px] bg-gradient-to-br from-[#667B58] via-[#758765] to-[#526748] text-white p-4 shadow-sm">
+                  <div className="rounded-[26px] bg-gradient-to-br from-[#E8A8B7] to-[#D47E93] text-white p-4 shadow-sm">
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <span className="text-[11px] text-[#F4EAD5] font-semibold">بيتكم في إيدكم 🌿</span>
+                        <span className="text-[11px] text-[#FFF8FA] font-semibold">بيتكم في إيدكم 🌿</span>
                         <h2 className="text-xl font-extrabold mt-1">أهلاً بيكم في تدبيرة</h2>
-                        <p className="text-[11px] text-white/85 mt-1 leading-5">كل احتياجات بيتكم اليومية في مكان واحد.</p>
+                        <p className="text-[11px] text-white/90 mt-1 leading-5">كل احتياجات بيتكم اليومية في مكان واحد.</p>
                       </div>
-                      <div className="shrink-0 rounded-2xl bg-white/15 px-3 py-2 text-center">
+                      <div className="shrink-0 rounded-2xl bg-white/20 px-3 py-2 text-center">
                         <Users className="w-5 h-5 mx-auto mb-1" />
                         <span className="text-[10px] block">أفراد الأسرة</span>
                         <strong className="text-lg leading-none">{familySize}</strong>
@@ -2242,14 +2620,14 @@ export default function App() {
                     </div>
                   </div>
                   <div className="flex items-end justify-between gap-2">
-                    <div><h3 className="font-extrabold text-sm text-[#454A3C]">تحبوا نبدأ بإيه النهارده؟</h3><p className="text-[10px] text-[#8A887C] mt-0.5">اختاروا القسم وابدأوا على طول</p></div>
-                    <span className="text-[10px] text-[#8A887C]">اختصارات سريعة</span>
+                    <div><h3 className="font-extrabold text-sm text-[#4A353B]">تحبوا نبدأ بإيه النهارده؟</h3><p className="text-[10px] text-[#8E757C] mt-0.5">اختاروا القسم وابدأوا على طول</p></div>
+                    <span className="text-[10px] text-[#8E757C]">اختصارات سريعة</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
-                    <button type="button" onClick={() => setActiveTab('food')} className="text-right rounded-2xl border border-[#EEDFD4] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F7EDE4] text-[#A66D4C] flex items-center justify-center"><Utensils className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">المطبخ والوصفات</b><small className="block text-[10px] text-[#969184] mt-0.5">اختاروا طبخة النهارده</small></button>
-                    <button type="button" onClick={() => setActiveTab('saved')} className="text-right rounded-2xl border border-[#E9E1D3] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F4EEE2] text-[#98764C] flex items-center justify-center"><ShoppingCart className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">قائمة المشتريات</b><small className="block text-[10px] text-[#969184] mt-0.5">{shoppingItems.filter(item => !item.isChecked).length} أصناف لسه محتاجة تتجاب</small></button>
-                    <button type="button" onClick={() => setActiveTab('budget')} className="text-right rounded-2xl border border-[#E2E8DC] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#EEF1E8] text-[#667B58] flex items-center justify-center"><Wallet className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">ميزانية البيت</b><small className="block text-[10px] text-[#969184] mt-0.5">المبلغ المحدد: {budgetAmount || '—'} ج.م</small></button>
-                    <button type="button" onClick={() => setActiveTab('household')} className="text-right rounded-2xl border border-[#E8E2D5] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F0EEE7] text-[#857B60] flex items-center justify-center"><Home className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">إدارة البيت</b><small className="block text-[10px] text-[#969184] mt-0.5">التنبيهات والمهام والادخار</small></button>
+                    <button type="button" onClick={() => setActiveTab('food')} className="text-right rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center"><Utensils className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#4A353B]">المطبخ والوصفات</b><small className="block text-[10px] text-[#8E757C] mt-0.5">اختاروا طبخة النهارده</small></button>
+                    <button type="button" onClick={() => setActiveTab('saved')} className="text-right rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center"><ShoppingCart className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#4A353B]">قائمة المشتريات</b><small className="block text-[10px] text-[#8E757C] mt-0.5">{shoppingItems.filter(item => !item.isChecked).length} أصناف لسه محتاجة تتجاب</small></button>
+                    <button type="button" onClick={() => setActiveTab('budget')} className="text-right rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center"><Wallet className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#4A353B]">ميزانية البيت</b><small className="block text-[10px] text-[#8E757C] mt-0.5">المبلغ المحدد: {budgetAmount || '—'} ج.م</small></button>
+                    <button type="button" onClick={() => setActiveTab('household')} className="text-right rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center"><Home className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#4A353B]">إدارة البيت</b><small className="block text-[10px] text-[#8E757C] mt-0.5">التنبيهات والمهام والادخار</small></button>
                   </div>
                   <button
                     type="button"
@@ -2260,26 +2638,26 @@ export default function App() {
                       setNewItemUnitPrice('');
                       setIsAddItemModalOpen(true);
                     }}
-                    className="w-full min-h-[44px] rounded-xl bg-[#1E5631] hover:bg-[#2E7D32] text-white py-2.5 px-3 text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-xs"
+                    className="w-full min-h-[44px] rounded-xl bg-[#D47E93] hover:bg-[#C96D84] text-white py-2.5 px-3 text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-xs"
                   >
                     <Plus className="w-4 h-4 shrink-0" />
                     <span>إضافة نواقص للسوق</span>
                   </button>
-                  <div className="rounded-2xl border border-[#E8E1D3] bg-[#F3EBDD] p-3.5 space-y-2.5">
-                    <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-extrabold text-[#66563F]">💡 تدبيرة اليوم</span><span className={dailyCompleted ? "text-[10px] font-bold text-[#526748]" : "text-[10px] font-bold text-[#8A704D]"}>{dailyCompleted ? "أنجزتوا تحدي النهارده ✓" : "خطوة صغيرة لبيت أهدى"}</span></div>
-                    <p className="text-[11px] text-[#796B56] leading-5">{todayChallenge.title}</p>
+                  <div className="rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-extrabold text-[#4A353B]">💡 تدبيرة اليوم</span><span className={dailyCompleted ? "text-[10px] font-bold text-[#C96D84]" : "text-[10px] font-bold text-[#8E757C]"}>{dailyCompleted ? "أنجزتوا تحدي النهارده ✓" : "خطوة صغيرة لبيت أهدى"}</span></div>
+                    <p className="text-[11px] text-[#8E757C] leading-5">{todayChallenge.title}</p>
                     <div className="flex flex-wrap items-center gap-2 pt-0.5">
                       <button
                         type="button"
                         onClick={() => { setDailyTipsViewMode('all'); setActiveTab('daily'); }}
-                        className="min-h-[40px] rounded-xl bg-[#1E5631] hover:bg-[#2E7D32] text-white px-3 py-1.5 text-[11px] font-bold transition whitespace-nowrap"
+                        className="min-h-[40px] rounded-xl bg-[#D47E93] hover:bg-[#C96D84] text-white px-3 py-1.5 text-[11px] font-bold transition whitespace-nowrap"
                       >
                         {dailyCompleted ? 'راجعوا أفكار التوفير' : 'شوفوا تفاصيل تدبيرة اليوم'}
                       </button>
                       <button
                         type="button"
                         onClick={() => { setDailyTipsViewMode('saved'); setActiveTab('daily'); }}
-                        className="min-h-[40px] rounded-xl border border-[#D4C7AE] bg-white hover:bg-[#FAF6EC] text-[#526748] px-3 py-1.5 text-[11px] font-bold inline-flex items-center gap-1 transition whitespace-nowrap"
+                        className="min-h-[40px] rounded-xl border border-[#F3DCE2] bg-[#FADDE4] hover:bg-[#E8A8B7]/40 text-[#C96D84] px-3 py-1.5 text-[11px] font-bold inline-flex items-center gap-1 transition whitespace-nowrap"
                       >
                         <Bookmark className="w-3.5 h-3.5 shrink-0" />
                         <span>أفكاري المحفوظة ({savedTipIds.length})</span>
@@ -2290,7 +2668,7 @@ export default function App() {
               )}
               {activeTab === 'household' && (
                 <ErrorBoundary fallbackTitle="تعذر تحميل شاشة إدارة البيت">
-                  <React.Suspense fallback={<div className="rounded-2xl bg-white border border-[#E8E0D1] p-4 text-center text-xs text-[#667B58]">بنجهز إدارة البيت…</div>}>
+                  <React.Suspense fallback={<div className="rounded-2xl bg-white border border-[#F3DCE2] p-4 text-center text-xs text-[#C96D84]">بنجهز إدارة البيت…</div>}>
                     <HouseholdHub
                       onNotify={showToast}
                     />
@@ -2304,23 +2682,23 @@ export default function App() {
                 <div className="space-y-4">
                   {kitchenView === 'online' ? (
                     <ErrorBoundary fallbackTitle="تعذر تحميل البحث الصوتي عن الوصفات" onReset={() => setKitchenView('main')}>
-                      <React.Suspense fallback={<div className="rounded-2xl border border-emerald-200 bg-white p-5 text-center text-sm text-gray-600">بنجهز مساعد الوصفات الصوتي…</div>}>
+                      <React.Suspense fallback={<div className="rounded-2xl border border-[#F3DCE2] bg-white p-5 text-center text-sm text-[#8E757C]">بنجهز مساعد الوصفات الصوتي…</div>}>
                         <OnlineRecipeSearch familySize={familySize} onBack={() => setKitchenView('main')} />
                       </React.Suspense>
                     </ErrorBoundary>
                   ) : kitchenView === 'offline' ? (
                     <section dir="rtl" className="space-y-3">
                       <div className="flex items-center justify-between gap-2">
-                        <button type="button" onClick={() => setKitchenView('main')} className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 min-h-[40px]">
+                        <button type="button" onClick={() => setKitchenView('main')} className="inline-flex items-center gap-1 rounded-xl border border-[#F3DCE2] bg-white px-3 py-2 text-xs font-bold text-[#4A353B] min-h-[40px]">
                           <ChevronRight className="h-4 w-4" /> رجوع للمطبخ
                         </button>
-                        <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-[10px] font-bold text-emerald-800">تعمل بدون إنترنت</span>
+                        <span className="rounded-full bg-[#FADDE4] px-3 py-1.5 text-[10px] font-bold text-[#C96D84]">تعمل بدون إنترنت</span>
                       </div>
-                      <div className="rounded-2xl bg-[#F1F5EC] p-4">
-                        <h2 className="text-lg font-black text-[#40533A]">مكتبة وصفات تدبيرة 🌿</h2>
-                        <p className="mt-1 text-xs leading-5 text-[#68745F]">كل الوصفات المصرية والبيتية المحفوظة داخل التطبيق في مكان واحد، وتقدر تفتحها وتفلترها بدون إنترنت.</p>
+                      <div className="rounded-2xl bg-[#FFFFFF] border border-[#F3DCE2] p-4">
+                        <h2 className="text-lg font-black text-[#4A353B]">مكتبة وصفات تدبيرة 🌿</h2>
+                        <p className="mt-1 text-xs leading-5 text-[#8E757C]">كل الوصفات المصرية والبيتية المحفوظة داخل التطبيق في مكان واحد، وتقدر تفتحها وتفلترها بدون إنترنت.</p>
                       </div>
-                      <input value={offlineRecipeQuery} onChange={event => setOfflineRecipeQuery(event.target.value)} placeholder="ابحث في الوصفات المجانية..." className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm outline-none focus:border-emerald-500" />
+                      <input value={offlineRecipeQuery} onChange={event => setOfflineRecipeQuery(event.target.value)} placeholder="ابحث في الوصفات المجانية..." className="w-full rounded-xl border border-[#F3DCE2] bg-white px-3 py-3 text-sm text-[#4A353B] outline-none focus:border-[#D47E93]" />
 
                       {/* Meal Category, Saved & Ready Filters */}
                       <div className="flex gap-1.5 overflow-x-auto pb-1 text-xs items-center">
@@ -2336,8 +2714,8 @@ export default function App() {
                             onClick={() => setMealFilter(cat.key as MealTypeFilter)}
                             className={`min-h-[40px] px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 transition ${
                               mealFilter === cat.key
-                                ? 'bg-[#1E5631] text-white shadow-sm'
-                                : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                                ? 'bg-[#D47E93] text-white shadow-sm'
+                                : 'bg-white border border-[#F3DCE2] text-[#4A353B] hover:bg-[#FFF8FA]'
                             }`}
                           >
                             {cat.label}
@@ -2349,11 +2727,11 @@ export default function App() {
                           onClick={() => setIsSavedRecipesFilter(prev => !prev)}
                           className={`min-h-[40px] px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 transition flex items-center gap-1.5 ${
                             isSavedRecipesFilter
-                              ? 'bg-[#D8C69A] text-[#3E3524] shadow-sm'
-                              : 'bg-white border border-[#E4DECF] text-[#626B49] hover:bg-[#FAF6EC]'
+                              ? 'bg-[#D47E93] text-white shadow-sm'
+                              : 'bg-white border border-[#F3DCE2] text-[#C96D84] hover:bg-[#FADDE4]/40'
                           }`}
                         >
-                          <Bookmark className={`w-3.5 h-3.5 ${isSavedRecipesFilter ? 'fill-[#3E3524]' : ''}`} />
+                          <Bookmark className={`w-3.5 h-3.5 ${isSavedRecipesFilter ? 'fill-white' : ''}`} />
                           <span>المحفوظة ({savedRecipeIds.length})</span>
                         </button>
 
@@ -2362,8 +2740,8 @@ export default function App() {
                           onClick={() => setIsZeroMissingOnly(prev => !prev)}
                           className={`min-h-[40px] px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 transition flex items-center gap-1.5 ${
                             isZeroMissingOnly
-                              ? 'bg-[#1E5631] text-white shadow-sm'
-                              : 'bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-50'
+                              ? 'bg-[#D47E93] text-white shadow-sm'
+                              : 'bg-white border border-[#F3DCE2] text-[#C96D84] hover:bg-[#FADDE4]/40'
                           }`}
                           title="إظهار فقط الوجبات الجاهزة بنسبة 100% دون أي مكونات ناقصة"
                         >
@@ -2379,7 +2757,7 @@ export default function App() {
                           type="button"
                           onClick={() => setIsVeryBudgetFilter(prev => !prev)}
                           className={`min-h-[36px] px-2.5 py-1 rounded-xl font-bold transition whitespace-nowrap ${
-                            isVeryBudgetFilter ? 'bg-[#1E5631] text-white' : 'bg-white border border-gray-200 text-gray-700'
+                            isVeryBudgetFilter ? 'bg-[#D47E93] text-white' : 'bg-white border border-[#F3DCE2] text-[#4A353B]'
                           }`}
                         >
                           💰 اقتصادي جداً
@@ -2388,7 +2766,7 @@ export default function App() {
                           type="button"
                           onClick={() => setIsQuickFilter(prev => !prev)}
                           className={`min-h-[36px] px-2.5 py-1 rounded-xl font-bold transition whitespace-nowrap ${
-                            isQuickFilter ? 'bg-[#1E5631] text-white' : 'bg-white border border-gray-200 text-gray-700'
+                            isQuickFilter ? 'bg-[#D47E93] text-white' : 'bg-white border border-[#F3DCE2] text-[#4A353B]'
                           }`}
                         >
                           ⚡ وجبات سريعة
@@ -2397,7 +2775,7 @@ export default function App() {
                           type="button"
                           onClick={() => setUsesLeftoversFilter(prev => !prev)}
                           className={`min-h-[36px] px-2.5 py-1 rounded-xl font-bold transition whitespace-nowrap ${
-                            usesLeftoversFilter ? 'bg-[#1E5631] text-white' : 'bg-white border border-gray-200 text-gray-700'
+                            usesLeftoversFilter ? 'bg-[#D47E93] text-white' : 'bg-white border border-[#F3DCE2] text-[#4A353B]'
                           }`}
                         >
                           ♻️ استغلال بواقي الأكل
@@ -2411,7 +2789,7 @@ export default function App() {
                         );
                         return (
                           <>
-                            <div className="flex items-center justify-between text-[11px] text-gray-500">
+                            <div className="flex items-center justify-between text-[11px] text-[#8E757C]">
                               <span>عدد الوصفات: {filteredLibraryRecipes.length}</span>
                               {(isSavedRecipesFilter || mealFilter !== 'all' || isZeroMissingOnly || isVeryBudgetFilter || isQuickFilter || usesLeftoversFilter || normalizedQuery) && (
                                 <button
@@ -2425,7 +2803,7 @@ export default function App() {
                                     setUsesLeftoversFilter(false);
                                     setOfflineRecipeQuery('');
                                   }}
-                                  className="font-bold text-[#1E5631] hover:underline"
+                                  className="font-bold text-[#C96D84] hover:underline"
                                 >
                                   إظهار الكل
                                 </button>
@@ -2435,9 +2813,9 @@ export default function App() {
                               {filteredLibraryRecipes.map(({ recipe, scaledCost, availableCount, totalCount }) => {
                                 const isSaved = savedRecipeIds.includes(recipe.id);
                                 return (
-                                  <div key={recipe.id} className="flex w-full items-center gap-2 rounded-2xl border border-gray-200 bg-white p-2.5 shadow-sm transition hover:border-emerald-300">
+                                  <div key={recipe.id} className="flex w-full items-center gap-2 rounded-2xl border border-[#F3DCE2] bg-white p-2.5 shadow-sm transition hover:border-[#D47E93]">
                                     <button type="button" onClick={() => setSelectedRecipeModal(recipe)} className="flex min-w-0 flex-1 items-center gap-3 text-right">
-                                      <span className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-[#F1F5EC]">
+                                      <span className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-[#FADDE4]/50">
                                         {recipe.imageUrl && !brokenImages[recipe.id] ? (
                                           <img
                                             src={recipe.imageUrl}
@@ -2456,9 +2834,9 @@ export default function App() {
                                         )}
                                       </span>
                                       <span className="min-w-0 flex-1">
-                                        <strong className="block truncate text-sm text-gray-900">{recipe.name}</strong>
-                                        <span className="mt-1 block text-[10px] text-gray-500">{recipe.mealType === 'breakfast' ? 'فطار' : recipe.mealType === 'lunch' ? 'غداء' : 'عشاء'} · {recipe.prepTimeMinutes} دقيقة · لـ {familySize} أفراد</span>
-                                        <span className="mt-0.5 block text-[10px] font-semibold text-[#1E5631]">
+                                        <strong className="block truncate text-sm text-[#4A353B]">{recipe.name}</strong>
+                                        <span className="mt-1 block text-[10px] text-[#8E757C]">{recipe.mealType === 'breakfast' ? 'فطار' : recipe.mealType === 'lunch' ? 'غداء' : 'عشاء'} · {recipe.prepTimeMinutes} دقيقة · لـ {familySize} أفراد</span>
+                                        <span className="mt-0.5 block text-[10px] font-semibold text-[#C96D84]">
                                           ~{scaledCost} ج.م · متوفر {availableCount} من {totalCount}
                                         </span>
                                       </span>
@@ -2470,17 +2848,17 @@ export default function App() {
                                       title={isSaved ? 'إزالة من المحفوظات' : 'حفظ الوصفة'}
                                       className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition ${
                                         isSaved
-                                          ? 'border-[#D8C69A] bg-[#F7F0DE] text-[#765B3A]'
-                                          : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'
+                                          ? 'border-[#E8A8B7] bg-[#FADDE4] text-[#C96D84]'
+                                          : 'border-[#F3DCE2] bg-[#FFF8FA] text-[#8E757C] hover:bg-[#FADDE4]/40'
                                       }`}
                                     >
-                                      <Bookmark className={`h-4 w-4 ${isSaved ? 'fill-[#765B3A]' : ''}`} />
+                                      <Bookmark className={`h-4 w-4 ${isSaved ? 'fill-[#C96D84]' : ''}`} />
                                     </button>
                                   </div>
                                 );
                               })}
                               {filteredLibraryRecipes.length === 0 && (
-                                <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-center text-xs text-gray-500">
+                                <div className="rounded-2xl border border-dashed border-[#F3DCE2] bg-white p-6 text-center text-xs text-[#8E757C]">
                                   {isSavedRecipesFilter
                                     ? 'لسه مفيش وصفات محفوظة. اضغطي على علامة الحفظ بجانب أي وصفة للرجوع لها بدون نت.'
                                     : 'ملقيناش وصفة مطابقة للفلاتر الحالية. جرّبي تغيير البحث أو إظهار الكل.'}
@@ -2497,63 +2875,63 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => { setIsSavedRecipesFilter(false); setKitchenView('offline'); }}
-                      className="flex w-full items-center justify-between rounded-2xl border border-[#DCE5D3] bg-[#F1F5EC] p-3 text-right transition hover:bg-[#E8EFE1]"
+                      className="flex w-full items-center justify-between rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 text-right transition hover:bg-[#FADDE4]/25"
                     >
                       <span className="flex items-center gap-2">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#526748]"><BookOpen className="h-5 w-5" /></span>
-                        <span><strong className="block text-xs text-[#40533A]">مكتبة الوصفات</strong><small className="mt-0.5 block text-[10px] text-[#68745F]">وصفات مجانية جاهزة داخل التطبيق</small></span>
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FADDE4] text-[#C96D84]"><BookOpen className="h-5 w-5" /></span>
+                        <span><strong className="block text-xs text-[#4A353B]">مكتبة الوصفات</strong><small className="mt-0.5 block text-[10px] text-[#8E757C]">وصفات مجانية جاهزة داخل التطبيق</small></span>
                       </span>
-                      <ChevronRight className="h-4 w-4 text-[#526748]" />
+                      <ChevronRight className="h-4 w-4 text-[#C96D84]" />
                     </button>
                     <button
                       type="button"
                       onClick={() => { setIsSavedRecipesFilter(true); setKitchenView('offline'); }}
-                      className="flex w-full items-center justify-between rounded-2xl border border-[#E6D9B8] bg-[#FAF5E8] p-3 text-right transition hover:bg-[#F3EBD6]"
+                      className="flex w-full items-center justify-between rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 text-right transition hover:bg-[#FADDE4]/25"
                     >
                       <span className="flex items-center gap-2">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#765B3A]"><Bookmark className="h-5 w-5" /></span>
-                        <span><strong className="block text-xs text-[#5E482C]">الوجبات المحفوظة ({savedRecipeIds.length})</strong><small className="mt-0.5 block text-[10px] text-[#7D6A4E]">وصفاتك المفضلة بدون إنترنت</small></span>
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FADDE4] text-[#C96D84]"><Bookmark className="h-5 w-5" /></span>
+                        <span><strong className="block text-xs text-[#4A353B]">الوجبات المحفوظة ({savedRecipeIds.length})</strong><small className="mt-0.5 block text-[10px] text-[#8E757C]">وصفاتك المفضلة بدون إنترنت</small></span>
                       </span>
-                      <ChevronRight className="h-4 w-4 text-[#765B3A]" />
+                      <ChevronRight className="h-4 w-4 text-[#C96D84]" />
                     </button>
                   </div>
-                  <button type="button" onClick={() => setKitchenView('online')} className="flex w-full items-center justify-between rounded-2xl border border-[#DCE2D0] bg-[#F1F3EA] p-3 text-right transition hover:bg-[#E8EBDD]">
+                  <button type="button" onClick={() => setKitchenView('online')} className="flex w-full items-center justify-between rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 text-right transition hover:bg-[#FADDE4]/25">
                     <span className="flex items-center gap-2">
-                      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#78815B]"><Mic className="h-5 w-5" /></span>
-                      <span><strong className="block text-xs text-[#626B49]">ابحث عن وصفة أونلاين 🎙️</strong><small className="mt-0.5 block text-[10px] text-[#78815B]">اتكلم أو اكتب اسم الأكلة، واسمع طريقة التحضير</small></span>
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FADDE4] text-[#C96D84]"><Mic className="h-5 w-5" /></span>
+                      <span><strong className="block text-xs text-[#4A353B]">ابحث عن وصفة أونلاين 🎙️</strong><small className="mt-0.5 block text-[10px] text-[#8E757C]">اتكلم أو اكتب اسم الأكلة، واسمع طريقة التحضير</small></span>
                     </span>
-                    <ChevronRight className="h-4 w-4 text-[#78815B]" />
+                    <ChevronRight className="h-4 w-4 text-[#C96D84]" />
                   </button>
                   {/* Brand Concept Motto Card */}
-                  <div className="bg-[#626B49] text-white p-3 rounded-2xl shadow-sm flex items-center justify-between">
+                  <div className="bg-gradient-to-br from-[#E8A8B7] to-[#D47E93] text-white p-3 rounded-2xl shadow-sm flex items-center justify-between">
                     <div>
-                      <span className="text-xs font-black text-[#D8C69A] block">تدبيرة — كل جنيه ليه قيمة 💛</span>
-                      <span className="text-[10px] text-[#F4EAD5]">تكلفة الوجبة التقديرية ومقادير الأكل حسب عدد أفراد بيتك 🇪🇬</span>
+                      <span className="text-xs font-black text-white block">تدبيرة — كل جنيه ليه قيمة 💛</span>
+                      <span className="text-[10px] text-[#FFF8FA]">تكلفة الوجبة التقديرية ومقادير الأكل حسب عدد أفراد بيتك 🇪🇬</span>
                     </div>
-                    <span className="text-xs bg-[#D8C69A] text-[#626B49] font-black px-2 py-0.5 rounded-lg">ج.م EGP</span>
+                    <span className="text-xs bg-white/25 text-white font-black px-2 py-0.5 rounded-lg">ج.م EGP</span>
                   </div>
                   {/* Family Size Scaler Bar */}
-                  <div className="bg-white p-3 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
+                  <div className="bg-white p-3 rounded-2xl border border-[#F3DCE2] shadow-sm flex items-center justify-between">
                     <div className="flex items-center gap-2 text-xs">
-                      <div className="p-1.5 rounded-lg bg-[#F1F3EA] text-[#626B49]">
+                      <div className="p-1.5 rounded-full bg-[#FADDE4] text-[#C96D84]">
                         <Users className="w-4 h-4" />
                       </div>
                       <div>
-                        <span className="font-bold text-gray-800 block">عدد أفراد الأسرة:</span>
-                        <span className="text-[10px] text-gray-400">تعديل المقادير والتكلفة تلقائياً</span>
+                        <span className="font-bold text-[#4A353B] block">عدد أفراد الأسرة:</span>
+                        <span className="text-[10px] text-[#8E757C]">تعديل المقادير والتكلفة تلقائياً</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => setFamilySize(prev => Math.max(1, prev - 1))}
-                        className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-[#626B49] font-black text-sm flex items-center justify-center transition"
+                        className="w-7 h-7 rounded-lg bg-[#FADDE4] hover:bg-[#E8A8B7]/50 text-[#C96D84] font-black text-sm flex items-center justify-center transition"
                       >
                         -
                       </button>
-                      <span className="w-8 text-center font-extrabold text-[#626B49] text-sm">{familySize}</span>
+                      <span className="w-8 text-center font-extrabold text-[#4A353B] text-sm">{familySize}</span>
                       <button
                         onClick={() => setFamilySize(prev => prev + 1)}
-                        className="w-7 h-7 rounded-lg bg-[#626B49] hover:bg-[#1E5631] text-white font-black text-sm flex items-center justify-center transition"
+                        className="w-7 h-7 rounded-lg bg-[#D47E93] hover:bg-[#C96D84] text-white font-black text-sm flex items-center justify-center transition"
                       >
                         +
                       </button>
@@ -2561,28 +2939,28 @@ export default function App() {
                   </div>
 
                   {/* Phase 4D: Weekly Meal Plan Banner & Feature Gate */}
-                  <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-3.5 space-y-3">
+                  <div className="bg-white rounded-2xl border border-[#F3DCE2] shadow-sm p-3.5 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-[#F7F0DE] text-amber-700 flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center shrink-0">
                           <CalendarCheck className="w-4 h-4" />
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5">
-                            <h3 className="font-extrabold text-xs text-[#626B49]">خطة وجبات الأسبوع التوفيرية الكاملة</h3>
+                            <h3 className="font-extrabold text-xs text-[#4A353B]">خطة وجبات الأسبوع التوفيرية الكاملة</h3>
                             {isWeeklyPlanUnlocked ? (
-                              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded-md flex items-center gap-0.5">
+                              <span className="bg-[#FADDE4] text-[#C96D84] text-[10px] font-bold px-1.5 py-0.2 rounded-md flex items-center gap-0.5">
                                 <Unlock className="w-2.5 h-2.5" />
                                 <span>مفتوحة ✓</span>
                               </span>
                             ) : (
-                              <span className="bg-[#EFE5C8] text-[#765B3A] text-[10px] font-bold px-1.5 py-0.2 rounded-md flex items-center gap-0.5">
+                              <span className="bg-[#FADDE4] text-[#C96D84] text-[10px] font-bold px-1.5 py-0.2 rounded-md flex items-center gap-0.5">
                                 <Lock className="w-2.5 h-2.5" />
                                 <span>مقفولة</span>
                               </span>
                             )}
                           </div>
-                          <p className="text-[10px] text-gray-500 mt-0.5">
+                          <p className="text-[10px] text-[#8E757C] mt-0.5">
                             جدول وجبات السبت إلى الجمعة (فطار، غداء، عشاء) لـ {familySize} أفراد مع جدول التسوق المجمع.
                           </p>
                         </div>
@@ -2596,7 +2974,7 @@ export default function App() {
                             localStorage.removeItem(REWARD_PLAN_STORAGE_KEY);
                             showToast('تم إعادة قفل الخطة للتجربة 🔒');
                           }}
-                          className="text-[10px] text-gray-400 hover:text-gray-600 underline whitespace-nowrap"
+                          className="text-[10px] text-[#8E757C] hover:text-[#4A353B] underline whitespace-nowrap"
                           title="إعادة القفل لتجربة محاكاة الإعلان مرة أخرى"
                         >
                           إعادة القفل للتجربة
@@ -2606,35 +2984,35 @@ export default function App() {
 
                     {!isWeeklyPlanUnlocked ? (
                       /* Locked State: Rewarded Ad Entry Point */
-                      <div className="bg-gradient-to-r from-amber-50 to-orange-50/60 p-3 rounded-xl border border-[#E6D9B8]/80 space-y-2.5">
+                      <div className="bg-[#FFF8FA] p-3 rounded-xl border border-[#F3DCE2] space-y-2.5">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="font-bold text-amber-950 flex items-center gap-1">
-                            <Sparkles className="w-3.5 h-3.5 text-[#D8C69A]" />
+                          <span className="font-bold text-[#4A353B] flex items-center gap-1">
+                            <Sparkles className="w-3.5 h-3.5 text-[#C96D84]" />
                             <span>فتح جدول وجبات 7 أيام وجدول التسوق المجمع</span>
                           </span>
-                          <span className="text-[10px] bg-amber-200/80 text-[#765B3A] font-bold px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] bg-[#FADDE4] text-[#C96D84] font-bold px-1.5 py-0.5 rounded">
                             مجاني بمكافأة 🎁
                           </span>
                         </div>
-                        <p className="text-[11px] text-[#765B3A]/80 leading-relaxed">
+                        <p className="text-[11px] text-[#8E757C] leading-relaxed">
                           تخلصي من حيرة "هنطبخ إيه النهاردة؟" مع خطة متكاملة محسوبة بالجرام والتكلفة للأسبوع كله.
                         </p>
                         <button
                           type="button"
                           onClick={handleRequestRewardedAd}
-                          className="w-full bg-[#626B49] hover:bg-[#1E5631] text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm"
+                          className="w-full bg-[#D47E93] hover:bg-[#C96D84] text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm"
                         >
-                          <Play className="w-3.5 h-3.5 text-[#D8C69A] fill-[#D8C69A]" />
+                          <Play className="w-3.5 h-3.5 text-white fill-white" />
                           <span>شاهد إعلاناً قصيراً لفتح جدول وجبات الأسبوع</span>
                         </button>
-                        <div className="flex items-center justify-between text-[10px] text-gray-500 pt-0.5">
+                        <div className="flex items-center justify-between text-[10px] text-[#8E757C] pt-0.5">
                           <span>• محاكاة إعلان تجريبي (AdMob Test Mode)</span>
                           <span>• بدون أي خصم من رصيدك أو بياناتك</span>
                         </div>
                       </div>
                     ) : (
                       /* Unlocked State: Full 7-Day Interactive Plan & Consolidated Shopping */
-                      <div className="space-y-3 pt-1 border-t border-gray-100">
+                      <div className="space-y-3 pt-1 border-t border-[#F3DCE2]">
                         {/* Days Horizontal Chips */}
                         <div className="flex gap-1 overflow-x-auto pb-1 text-[11px]">
                           {WEEKLY_DAYS_SCHEDULE.map(day => (
@@ -2644,8 +3022,8 @@ export default function App() {
                               onClick={() => setSelectedPlanDayId(day.dayId)}
                               className={`px-2.5 py-1 rounded-xl font-bold whitespace-nowrap transition ${
                                 selectedPlanDayId === day.dayId
-                                  ? 'bg-[#626B49] text-white shadow-xs'
-                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                  ? 'bg-[#D47E93] text-white shadow-xs'
+                                  : 'bg-[#FFF8FA] border border-[#F3DCE2] text-[#4A353B] hover:bg-[#FADDE4]/40'
                               }`}
                             >
                               <span>{day.dayName}</span>
@@ -2664,13 +3042,13 @@ export default function App() {
                                            (dRecipe ? calculateRecipeScaledCost(dRecipe, familySize) : 0);
 
                           return (
-                            <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-2.5">
-                              <div className="flex items-center justify-between pb-1.5 border-b border-gray-200">
+                            <div className="bg-[#FFF8FA] p-3 rounded-xl border border-[#F3DCE2] space-y-2.5">
+                              <div className="flex items-center justify-between pb-1.5 border-b border-[#F3DCE2]">
                                 <div>
-                                  <span className="font-extrabold text-xs text-[#626B49]">جدول يوم {activeDay.dayName}</span>
-                                  <span className="text-[10px] text-gray-500 block">{activeDay.theme}</span>
+                                  <span className="font-extrabold text-xs text-[#4A353B]">جدول يوم {activeDay.dayName}</span>
+                                  <span className="text-[10px] text-[#8E757C] block">{activeDay.theme}</span>
                                 </div>
-                                <span className="bg-[#FFE54C]/50 text-[#626B49] font-bold text-[11px] px-2 py-0.5 rounded-lg border border-[#D8C69A]/50">
+                                <span className="bg-[#FADDE4] text-[#C96D84] font-bold text-[11px] px-2 py-0.5 rounded-lg border border-[#F3DCE2]">
                                   تكلفة اليوم: ~{dayTotal} ج.م
                                 </span>
                               </div>
@@ -2680,13 +3058,13 @@ export default function App() {
                                 {bRecipe && (
                                   <div
                                     onClick={() => setSelectedRecipeModal(bRecipe)}
-                                    className="bg-white p-2 rounded-lg border border-gray-100 flex items-center justify-between cursor-pointer hover:border-[#626B49] transition"
+                                    className="bg-white p-2 rounded-lg border border-[#F3DCE2] flex items-center justify-between cursor-pointer hover:border-[#D47E93] transition"
                                   >
                                     <div className="flex items-center gap-1.5">
-                                      <span className="text-[10px] bg-[#EFE5C8] text-[#765B3A] font-bold px-1.5 py-0.2 rounded">فطار</span>
-                                      <span className="font-bold text-gray-800 text-[11px] truncate max-w-[170px]">{bRecipe.name}</span>
+                                      <span className="text-[10px] bg-[#FADDE4] text-[#C96D84] font-bold px-1.5 py-0.2 rounded">فطار</span>
+                                      <span className="font-bold text-[#4A353B] text-[11px] truncate max-w-[170px]">{bRecipe.name}</span>
                                     </div>
-                                    <span className="text-[10px] text-[#626B49] font-bold">~{calculateRecipeScaledCost(bRecipe, familySize)} ج.م</span>
+                                    <span className="text-[10px] text-[#C96D84] font-bold">~{calculateRecipeScaledCost(bRecipe, familySize)} ج.م</span>
                                   </div>
                                 )}
 
@@ -2694,13 +3072,13 @@ export default function App() {
                                 {lRecipe && (
                                   <div
                                     onClick={() => setSelectedRecipeModal(lRecipe)}
-                                    className="bg-white p-2 rounded-lg border border-gray-100 flex items-center justify-between cursor-pointer hover:border-[#626B49] transition"
+                                    className="bg-white p-2 rounded-lg border border-[#F3DCE2] flex items-center justify-between cursor-pointer hover:border-[#D47E93] transition"
                                   >
                                     <div className="flex items-center gap-1.5">
-                                      <span className="text-[10px] bg-[#E8EBDD] text-[#626B49] font-bold px-1.5 py-0.2 rounded">غداء</span>
-                                      <span className="font-bold text-gray-800 text-[11px] truncate max-w-[170px]">{lRecipe.name}</span>
+                                      <span className="text-[10px] bg-[#FADDE4] text-[#C96D84] font-bold px-1.5 py-0.2 rounded">غداء</span>
+                                      <span className="font-bold text-[#4A353B] text-[11px] truncate max-w-[170px]">{lRecipe.name}</span>
                                     </div>
-                                    <span className="text-[10px] text-[#626B49] font-bold">~{calculateRecipeScaledCost(lRecipe, familySize)} ج.م</span>
+                                    <span className="text-[10px] text-[#C96D84] font-bold">~{calculateRecipeScaledCost(lRecipe, familySize)} ج.م</span>
                                   </div>
                                 )}
 
@@ -2708,13 +3086,13 @@ export default function App() {
                                 {dRecipe && (
                                   <div
                                     onClick={() => setSelectedRecipeModal(dRecipe)}
-                                    className="bg-white p-2 rounded-lg border border-gray-100 flex items-center justify-between cursor-pointer hover:border-[#626B49] transition"
+                                    className="bg-white p-2 rounded-lg border border-[#F3DCE2] flex items-center justify-between cursor-pointer hover:border-[#D47E93] transition"
                                   >
                                     <div className="flex items-center gap-1.5">
-                                      <span className="text-[10px] bg-purple-100 text-purple-900 font-bold px-1.5 py-0.2 rounded">عشاء</span>
-                                      <span className="font-bold text-gray-800 text-[11px] truncate max-w-[170px]">{dRecipe.name}</span>
+                                      <span className="text-[10px] bg-[#FADDE4] text-[#C96D84] font-bold px-1.5 py-0.2 rounded">عشاء</span>
+                                      <span className="font-bold text-[#4A353B] text-[11px] truncate max-w-[170px]">{dRecipe.name}</span>
                                     </div>
-                                    <span className="text-[10px] text-[#626B49] font-bold">~{calculateRecipeScaledCost(dRecipe, familySize)} ج.م</span>
+                                    <span className="text-[10px] text-[#C96D84] font-bold">~{calculateRecipeScaledCost(dRecipe, familySize)} ج.م</span>
                                   </div>
                                 )}
                               </div>
@@ -2727,7 +3105,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => setIsConsolidatedShoppingModalOpen(true)}
-                            className="flex-1 bg-white hover:bg-gray-50 text-[#626B49] font-bold py-2 px-2.5 rounded-xl text-[11px] border border-[#DCE2D0] flex items-center justify-center gap-1.5 transition"
+                            className="flex-1 bg-white hover:bg-[#FFF8FA] text-[#C96D84] font-bold py-2 px-2.5 rounded-xl text-[11px] border border-[#F3DCE2] flex items-center justify-center gap-1.5 transition"
                           >
                             <CalendarCheck className="w-3.5 h-3.5" />
                             <span>جدول التسوق المجمع 📋</span>
@@ -2735,7 +3113,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={handleAddConsolidatedPlanToShopping}
-                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-2.5 rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition shadow-xs"
+                            className="flex-1 bg-[#D47E93] hover:bg-[#C96D84] text-white font-bold py-2 px-2.5 rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition shadow-xs"
                           >
                             <ShoppingCart className="w-3.5 h-3.5" />
                             <span>+ مقادير الأسبوع للمشتريات</span>
@@ -2746,10 +3124,10 @@ export default function App() {
                   </div>
 
                   {/* Ingredients Drawer */}
-                  <div className="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm">
+                  <div className="bg-white p-3.5 rounded-2xl border border-[#F3DCE2] shadow-sm">
                     <div className="flex items-center justify-between mb-2 gap-2">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-[#626B49]">
+                        <span className="text-xs font-bold text-[#4A353B]">
                           المكونات المتوفرة في بيتك ({selectedIngredients.length}):
                         </span>
                       </div>
@@ -2761,8 +3139,8 @@ export default function App() {
                           onClick={voiceState === 'listening' ? stopVoiceRecognition : startVoiceRecognition}
                           className={`flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-xl transition ${
                             voiceState === 'listening'
-                              ? 'bg-rose-600 text-white animate-pulse shadow-sm ring-2 ring-rose-300'
-                              : 'bg-[#F1F3EA] hover:bg-[#E8EBDD] text-[#626B49] border border-[#DCE2D0]'
+                              ? 'bg-red-600 text-white animate-pulse shadow-sm ring-2 ring-red-300'
+                              : 'bg-[#FADDE4] hover:bg-[#E8A8B7]/50 text-[#C96D84] border border-[#F3DCE2]'
                           }`}
                           title="اختيار المكونات بالصوت باللهجة المصرية"
                           aria-label="اختيار المكونات بالصوت"
@@ -2774,7 +3152,7 @@ export default function App() {
                             </>
                           ) : (
                             <>
-                              <Mic className="w-3.5 h-3.5 text-[#626B49]" />
+                              <Mic className="w-3.5 h-3.5 text-[#C96D84]" />
                               <span>بالصوت 🎙️</span>
                             </>
                           )}
@@ -2796,27 +3174,27 @@ export default function App() {
                     {voiceState !== 'idle' && voiceFeedback && (
                       <div className={`mb-2.5 p-2 rounded-xl text-xs flex items-center justify-between border transition ${
                         voiceState === 'listening'
-                          ? 'bg-rose-50 border-rose-200 text-rose-900 animate-pulse'
+                          ? 'bg-red-50 border-red-200 text-red-900 animate-pulse'
                           : voiceState === 'success'
-                          ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                          ? 'bg-[#FADDE4]/60 border-[#E8A8B7] text-[#4A353B]'
                           : voiceState === 'no-match'
-                          ? 'bg-[#F7F0DE] border-[#E6D9B8] text-[#765B3A]'
-                          : 'bg-gray-50 border-gray-200 text-gray-800'
+                          ? 'bg-[#FFF8FA] border-[#F3DCE2] text-[#8E757C]'
+                          : 'bg-[#FFF8FA] border-[#F3DCE2] text-[#4A353B]'
                       }`}>
                         <div className="flex items-center gap-1.5">
                           {voiceState === 'listening' ? (
-                            <Mic className="w-3.5 h-3.5 text-rose-600 shrink-0 animate-bounce" />
+                            <Mic className="w-3.5 h-3.5 text-red-600 shrink-0 animate-bounce" />
                           ) : voiceState === 'success' ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <Check className="w-3.5 h-3.5 text-[#C96D84] shrink-0" />
                           ) : (
-                            <Info className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <Info className="w-3.5 h-3.5 text-[#C96D84] shrink-0" />
                           )}
                           <span className="text-[11px] font-medium leading-tight">{voiceFeedback}</span>
                         </div>
                         <button
                           type="button"
                           onClick={() => { setVoiceState('idle'); setVoiceFeedback(null); }}
-                          className="text-gray-400 hover:text-gray-600 p-0.5 text-xs font-bold"
+                          className="text-[#8E757C] hover:text-[#4A353B] p-0.5 text-xs font-bold"
                           title="إخفاء التنبيه"
                         >
                           ✕
@@ -2833,8 +3211,8 @@ export default function App() {
                             onClick={() => toggleIngredient(ing)}
                             className={`text-xs px-2.5 py-1 rounded-lg font-medium transition flex items-center gap-1 ${
                               isSelected
-                                ? 'bg-[#626B49] text-white shadow-sm'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                ? 'bg-[#D47E93] text-white shadow-sm'
+                                : 'bg-[#FFF8FA] border border-[#F3DCE2] text-[#4A353B] hover:bg-[#FADDE4]/40'
                             }`}
                           >
                             {isSelected && <Check className="w-3 h-3" />}
@@ -2845,7 +3223,7 @@ export default function App() {
                     </div>
 
                     <ErrorBoundary fallbackTitle="تعذر تحميل مكتبة الاقتراحات الذكية">
-                      <React.Suspense fallback={<div className="rounded-xl bg-white border border-gray-100 p-3 text-center text-[11px] text-gray-500">بنجهز اقتراحات الوجبات…</div>}>
+                      <React.Suspense fallback={<div className="rounded-xl bg-white border border-[#F3DCE2] p-3 text-center text-[11px] text-[#8E757C]">بنجهز اقتراحات الوجبات…</div>}>
                         <IngredientRecipeFinder availableIngredients={selectedIngredients} familySize={familySize} />
                       </React.Suspense>
                     </ErrorBoundary>
@@ -2855,13 +3233,13 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setIsAddCustomRecipeModalOpen(true)}
-                    className="w-full bg-white border border-[#626B49] text-[#626B49] hover:bg-[#F1F3EA] font-bold py-2.5 px-3 rounded-2xl text-xs flex items-center justify-center gap-1.5 transition shadow-xs"
+                    className="w-full bg-white border border-[#D47E93] text-[#C96D84] hover:bg-[#FADDE4]/40 font-bold py-2.5 px-3 rounded-2xl text-xs flex items-center justify-center gap-1.5 transition shadow-xs"
                   >
                     <Plus className="w-4 h-4" />
                     <span>أضف أكلتك الخاصة 🍳</span>
                   </button>
 
-                  <div className="rounded-2xl border border-[#E4DECF] bg-[#FFFDF8] p-4 text-center text-sm text-[#626B49]">
+                  <div className="rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-4 text-center text-sm text-[#4A353B]">
                     كل وصفات تدبيرة موجودة في مكان واحد داخل <strong>مكتبة الوصفات</strong> بالأعلى. افتح المكتبة للبحث والاختيار وعرض المقادير والخطوات.
                   </div>
                     </>
@@ -2875,17 +3253,17 @@ export default function App() {
               {activeTab === 'budget' && (
                 <div className="space-y-4">
                   {/* Core Brand Identity Hero Banner */}
-                  <div className="bg-gradient-to-r from-[#626B49] via-[#4D5538] to-[#626B49] text-white p-3.5 rounded-2xl shadow-sm border-b-2 border-[#D8C69A] space-y-1">
+                  <div className="bg-gradient-to-br from-[#E8A8B7] to-[#D47E93] text-white p-3.5 rounded-2xl shadow-sm border-b-2 border-[#F3DCE2] space-y-1">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-lg">💛</span>
-                        <h2 className="text-sm font-black text-[#D8C69A]">تدبيرة — كل جنيه ليه قيمة</h2>
+                        <h2 className="text-sm font-black text-white">تدبيرة — كل جنيه ليه قيمة</h2>
                       </div>
-                      <span className="bg-[#D8C69A] text-[#626B49] text-[10px] font-extrabold px-2 py-0.5 rounded-md">
+                      <span className="bg-white/20 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-md">
                         ميزانية البيت 🇪🇬
                       </span>
                     </div>
-                    <p className="text-xs text-[#F4EAD5] font-medium">
+                    <p className="text-xs text-[#FFF8FA] font-medium">
                       وفّر بذكاء، ودبّر بيتك، وخلي كل جنيه في مكانه.
                     </p>
                   </div>
@@ -2898,21 +3276,21 @@ export default function App() {
                       setExpenseDesc('');
                       setIsAddExpenseModalOpen(true);
                     }}
-                    className="w-full bg-[#626B49] hover:bg-[#1E5631] text-white font-extrabold py-3 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md transition"
+                    className="w-full bg-[#D47E93] hover:bg-[#C96D84] text-white font-extrabold py-3 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md transition"
                   >
-                    <Plus className="w-4 h-4 text-[#D8C69A]" />
+                    <Plus className="w-4 h-4 text-white" />
                     <span>سجّلي مصروف جديد +</span>
                   </button>
 
                   {/* Smart Financial Advisor Banner */}
-                  <div className="bg-gradient-to-r from-amber-50 via-[#F5F7F0] to-emerald-50 p-3.5 rounded-2xl border border-[#E6D9B8]/80 shadow-sm space-y-1.5">
+                  <div className="bg-[#FFFFFF] p-3.5 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-1.5">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-xl bg-[#EFE5C8] text-amber-800 flex items-center justify-center shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center shrink-0">
                         <Lightbulb className="w-4 h-4" />
                       </div>
-                      <span className="font-extrabold text-xs text-[#626B49]">💡 توجيه ذكي للميزانية</span>
+                      <span className="font-extrabold text-xs text-[#4A353B]">💡 توجيه ذكي للميزانية</span>
                     </div>
-                    <p className="text-xs font-bold text-gray-800 leading-relaxed pr-9">
+                    <p className="text-xs font-bold text-[#4A353B] leading-relaxed pr-9">
                       {(() => {
                         const bAmt = parseFloat(budgetAmount) || 2500;
                         const spent = totalSpentAll;
@@ -2933,18 +3311,18 @@ export default function App() {
                   </div>
 
                   {/* Feature 3: Monthly Payday Cycle & Countdown Widget */}
-                  <div className="bg-gradient-to-l from-[#4D5538] to-[#626B49] text-white p-3.5 rounded-2xl shadow-sm space-y-2.5">
+                  <div className="bg-gradient-to-br from-[#E8A8B7] to-[#D47E93] text-white p-3.5 rounded-2xl shadow-sm space-y-2.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-white/10 backdrop-blur-xs flex items-center justify-center text-[#D8C69A]">
+                        <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-xs flex items-center justify-center text-white">
                           <Calendar className="w-4 h-4" />
                         </div>
                         <div>
-                          <span className="text-[10px] text-[#F4EAD5] block font-medium">دورة الراتب الشهري</span>
+                          <span className="text-[10px] text-[#FFF8FA] block font-medium">دورة الراتب الشهري</span>
                           <span className="text-xs font-extrabold text-white">
                             {paydayAnalytics.isConfigured ? (
                               paydayAnalytics.isToday ? (
-                                <span className="text-[#D8C69A]">النهارده موعد الراتب 🎉</span>
+                                <span className="text-[#FFF8FA]">النهارده موعد الراتب 🎉</span>
                               ) : (
                                 <span>باقي {paydayAnalytics.daysRemaining} أيام على موعد الراتب القادم</span>
                               )
@@ -2960,43 +3338,43 @@ export default function App() {
                           setTempPaydayInput(paydayDay ? paydayDay.toString() : '25');
                           setIsPaydayModalOpen(true);
                         }}
-                        className="text-[11px] bg-white/15 hover:bg-white/25 px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1 text-white border border-white/20"
+                        className="text-[11px] bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1 text-white border border-white/25"
                         title="تعديل أو تحديد يوم نزول الراتب"
                       >
-                        <Clock className="w-3 h-3 text-[#D8C69A]" />
+                        <Clock className="w-3 h-3 text-white" />
                         <span>{paydayAnalytics.isConfigured ? `يوم ${paydayAnalytics.paydayDay}` : 'تحديد اليوم'}</span>
                       </button>
                     </div>
 
                     {paydayAnalytics.isConfigured ? (
-                      <div className="pt-2 border-t border-white/15 flex items-center justify-between text-xs">
+                      <div className="pt-2 border-t border-white/20 flex items-center justify-between text-xs">
                         <div>
-                          <span className="text-[10px] text-[#F4EAD5] block">الحد المقترح للصرف اليومي:</span>
+                          <span className="text-[10px] text-[#FFF8FA] block">الحد المقترح للصرف اليومي:</span>
                           {!paydayAnalytics.isBudgetExhausted && paydayAnalytics.dailyCap !== null ? (
                             <div className="flex items-baseline gap-1">
-                              <span className="text-base font-black text-[#D8C69A]">~{paydayAnalytics.dailyCap}</span>
+                              <span className="text-base font-black text-white">~{paydayAnalytics.dailyCap}</span>
                               <span className="text-[10px] text-white">ج.م/يوم</span>
                               <span className="text-[10px] text-white/90 mr-1 font-normal">
                                 ({paydayAnalytics.daysRemaining > 0 ? `على مدار ${paydayAnalytics.daysRemaining} يوم` : 'اليوم'})
                               </span>
                             </div>
                           ) : (
-                            <span className="text-[11px] font-bold text-rose-300">
+                            <span className="text-[11px] font-bold text-[#FFF8FA]">
                               ⚠️ تم استهلاك الميزانية بالكامل
                             </span>
                           )}
                         </div>
 
                         <div className="text-left">
-                          <span className="text-[10px] text-[#F4EAD5] block">الموعد المحدد:</span>
+                          <span className="text-[10px] text-[#FFF8FA] block">الموعد المحدد:</span>
                           <span className="text-xs font-bold text-white">
                             {paydayAnalytics.effectivePayday} في الشهر
                           </span>
                         </div>
                       </div>
                     ) : (
-                      <div className="pt-2 border-t border-white/15 flex items-center justify-between text-xs">
-                        <p className="text-[11px] text-[#F4EAD5] leading-tight">
+                      <div className="pt-2 border-t border-white/20 flex items-center justify-between text-xs">
+                        <p className="text-[11px] text-[#FFF8FA] leading-tight">
                           اختر يوم نزول الراتب لحساب الأيام المتبقية تلقائياً وتحديد حد الصرف اليومي الذكي.
                         </p>
                         <button
@@ -3004,7 +3382,7 @@ export default function App() {
                             setTempPaydayInput('25');
                             setIsPaydayModalOpen(true);
                           }}
-                          className="bg-[#D8C69A] hover:bg-[#FFA000] text-[#626B49] font-extrabold text-[11px] px-2.5 py-1 rounded-lg shrink-0 mr-2 transition"
+                          className="bg-white hover:bg-[#FADDE4] text-[#C96D84] font-extrabold text-[11px] px-2.5 py-1 rounded-lg shrink-0 mr-2 transition"
                         >
                           ضبط الآن
                         </button>
@@ -3013,52 +3391,52 @@ export default function App() {
                   </div>
 
                   {/* Budget Input & Balance Cards */}
-                  <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3">
+                  <div className="bg-white p-4 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-3">
                     <div>
-                      <label className="text-xs font-bold text-gray-700 block mb-1">الميزانية الإجمالية المتاحة:</label>
+                      <label className="text-xs font-bold text-[#4A353B] block mb-1">الميزانية الإجمالية المتاحة:</label>
                       <div className="relative">
                         <input
                           type="number"
                           value={budgetAmount}
                           onChange={(e) => setBudgetAmount(e.target.value)}
                           placeholder="مثال: 2500"
-                          className="w-full text-lg font-extrabold text-[#626B49] border border-gray-300 rounded-xl px-3 py-2 pr-12 focus:outline-none focus:border-[#626B49]"
+                          className="w-full text-lg font-extrabold text-[#4A353B] border border-[#F3DCE2] rounded-xl px-3 py-2 pr-12 focus:outline-none focus:border-[#D47E93]"
                         />
-                        <span className="absolute left-3 top-2.5 font-bold text-sm text-gray-400">ج.م</span>
+                        <span className="absolute left-3 top-2.5 font-bold text-sm text-[#8E757C]">ج.م</span>
                       </div>
                     </div>
 
                     {/* Financial Snapshot Tiles */}
                     <div className="grid grid-cols-2 gap-2 pt-1 text-center">
-                      <div className="bg-[#F1F3EA]/70 p-2.5 rounded-xl border border-[#E4DECF]">
-                        <span className="text-[10px] text-gray-500 block">إجمالي المصروف الفعلي</span>
-                        <span className="text-sm font-black text-[#626B49]">{totalSpentAll} ج.م</span>
+                      <div className="bg-[#FFF8FA] p-2.5 rounded-xl border border-[#F3DCE2]">
+                        <span className="text-[10px] text-[#8E757C] block">إجمالي المصروف الفعلي</span>
+                        <span className="text-sm font-black text-[#4A353B]">{totalSpentAll} ج.م</span>
                       </div>
                       <div className={`p-2.5 rounded-xl border ${
-                        totalRemainingAll >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700'
+                        totalRemainingAll >= 0 ? 'bg-[#FADDE4]/60 border-[#E8A8B7] text-[#C96D84]' : 'bg-red-50 border-red-200 text-red-700'
                       }`}>
-                        <span className="text-[10px] text-gray-500 block">المتبقي في المحفظة</span>
+                        <span className="text-[10px] text-[#8E757C] block">المتبقي في المحفظة</span>
                         <span className="text-sm font-black">{totalRemainingAll} ج.م</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Feature 2: Visual Spending Donut Chart Card */}
-                  <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3">
+                  <div className="bg-white p-4 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-lg bg-[#F1F3EA] text-[#626B49]">
+                        <div className="p-1.5 rounded-full bg-[#FADDE4] text-[#C96D84]">
                           <PieChart className="w-4 h-4" />
                         </div>
                         <div>
-                          <h3 className="text-xs font-extrabold text-gray-900">توزيع المصروف الفعلي حسب البنود</h3>
-                          <span className="text-[10px] text-gray-400">تحليل إنفاق دورة الراتب الحالية ({payCycleRange.label})</span>
+                          <h3 className="text-xs font-extrabold text-[#4A353B]">توزيع المصروف الفعلي حسب البنود</h3>
+                          <span className="text-[10px] text-[#8E757C]">تحليل إنفاق دورة الراتب الحالية ({payCycleRange.label})</span>
                         </div>
                       </div>
                       {selectedDonutSegmentId && (
                         <button
                           onClick={() => setSelectedDonutSegmentId(null)}
-                          className="text-[10px] text-gray-500 hover:text-gray-700 underline"
+                          className="text-[10px] text-[#C96D84] hover:text-[#4A353B] underline"
                         >
                           إلغاء التحديد
                         </button>
@@ -3066,12 +3444,12 @@ export default function App() {
                     </div>
 
                     {totalSpentAll === 0 ? (
-                      <div className="py-6 px-4 text-center border border-dashed border-gray-200 rounded-xl space-y-2">
-                        <div className="w-10 h-10 rounded-full bg-gray-100 mx-auto flex items-center justify-center text-gray-400">
+                      <div className="py-6 px-4 text-center border border-dashed border-[#F3DCE2] rounded-xl space-y-2">
+                        <div className="w-10 h-10 rounded-full bg-[#FADDE4] mx-auto flex items-center justify-center text-[#C96D84]">
                           <PieChart className="w-5 h-5" />
                         </div>
-                        <p className="text-xs font-bold text-gray-600">لا توجد مصاريف مسجلة حتى الآن لرسم المخطط 📊</p>
-                        <p className="text-[11px] text-gray-400 max-w-xs mx-auto leading-relaxed">
+                        <p className="text-xs font-bold text-[#4A353B]">لا توجد مصاريف مسجلة حتى الآن لرسم المخطط 📊</p>
+                        <p className="text-[11px] text-[#8E757C] max-w-xs mx-auto leading-relaxed">
                           سجّلي أول عملية صرف من زر &quot;سجّلي مصروف جديد +&quot; بالأعلى لتشاهد رسم بياني يوضح نسب إنفاقك على كل بند.
                         </p>
                       </div>
@@ -3086,12 +3464,13 @@ export default function App() {
                               cy="50"
                               r="38"
                               fill="transparent"
-                              stroke="#F1F5F9"
+                              stroke="#F3DCE2"
                               strokeWidth="11"
                             />
                             {/* Category Segments */}
-                            {donutSegments.map((seg) => {
+                            {donutSegments.map((seg, segIdx) => {
                               const isSelected = selectedDonutSegmentId === seg.categoryId;
+                              const segColor = POWDER_PINK_DONUT_PALETTE[segIdx % POWDER_PINK_DONUT_PALETTE.length];
                               return (
                                 <circle
                                   key={seg.categoryId}
@@ -3099,7 +3478,7 @@ export default function App() {
                                   cy="50"
                                   r="38"
                                   fill="transparent"
-                                  stroke={seg.color}
+                                  stroke={segColor}
                                   strokeWidth={isSelected ? "14" : "11"}
                                   strokeDasharray={seg.strokeDasharray}
                                   strokeDashoffset={seg.strokeDashoffset}
@@ -3121,46 +3500,53 @@ export default function App() {
 
                           {/* Center Text in Donut */}
                           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
-                            <span className="text-[10px] text-gray-400 font-medium">إجمالي المصروف</span>
-                            <span className="text-base font-black text-[#626B49] leading-tight">{totalSpentAll}</span>
-                            <span className="text-[10px] font-bold text-gray-500">ج.م</span>
+                            <span className="text-[10px] text-[#8E757C] font-medium">إجمالي المصروف</span>
+                            <span className="text-base font-black text-[#4A353B] leading-tight">{totalSpentAll}</span>
+                            <span className="text-[10px] font-bold text-[#8E757C]">ج.م</span>
                           </div>
                         </div>
 
                         {/* Interactive Detail Panel */}
                         {selectedDonutSegment && (
-                          <div className="bg-[#F1F3EA]/70 p-3 rounded-xl border border-[#DCE2D0] text-xs space-y-1.5 animate-fadeIn">
+                          <div className="bg-[#FFF8FA] p-3 rounded-xl border border-[#F3DCE2] text-xs space-y-1.5 animate-fadeIn">
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-1.5 font-bold text-gray-900">
-                                <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: selectedDonutSegment.color }} />
+                              <div className="flex items-center gap-1.5 font-bold text-[#4A353B]">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full inline-block"
+                                  style={{
+                                    backgroundColor: POWDER_PINK_DONUT_PALETTE[
+                                      Math.max(0, donutSegments.findIndex(s => s.categoryId === selectedDonutSegment.categoryId)) % POWDER_PINK_DONUT_PALETTE.length
+                                    ],
+                                  }}
+                                />
                                 <span>{selectedDonutSegment.categoryName}</span>
                               </div>
-                              <span className="bg-[#626B49] text-white text-[10px] font-extrabold px-2 py-0.5 rounded-md">
+                              <span className="bg-[#D47E93] text-white text-[10px] font-extrabold px-2 py-0.5 rounded-md">
                                 {selectedDonutSegment.sharePercentage}% من إجمالي الصرف
                               </span>
                             </div>
 
                             <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
                               <div>
-                                <span className="text-gray-500 block">المنصرف الفعلي:</span>
-                                <span className="font-extrabold text-[#626B49]">{selectedDonutSegment.spent} ج.م</span>
+                                <span className="text-[#8E757C] block">المنصرف الفعلي:</span>
+                                <span className="font-extrabold text-[#C96D84]">{selectedDonutSegment.spent} ج.م</span>
                               </div>
                               <div>
-                                <span className="text-gray-500 block">الميزانية المخصصة:</span>
-                                <span className="font-bold text-gray-700">{selectedDonutSegment.allocated} ج.م</span>
+                                <span className="text-[#8E757C] block">الميزانية المخصصة:</span>
+                                <span className="font-bold text-[#4A353B]">{selectedDonutSegment.allocated} ج.م</span>
                               </div>
                             </div>
-                            <div className="text-[10px] text-gray-500 pt-0.5">
-                              نسبة استهلاك ميزانية هذا البند: <span className="font-bold text-gray-800">{selectedDonutSegment.budgetPercentage}%</span>
+                            <div className="text-[10px] text-[#8E757C] pt-0.5">
+                              نسبة استهلاك ميزانية هذا البند: <span className="font-bold text-[#4A353B]">{selectedDonutSegment.budgetPercentage}%</span>
                             </div>
                           </div>
                         )}
 
                         {/* Arabic Legend */}
-                        <div className="pt-2 border-t border-gray-100 grid grid-cols-2 gap-1.5 text-xs">
+                        <div className="pt-2 border-t border-[#F3DCE2] grid grid-cols-2 gap-1.5 text-xs">
                           {budgetBreakdown.map((cat) => {
-                            const seg = donutSegments.find(s => s.categoryId === cat.id);
-                            const color = seg ? seg.color : '#CBD5E1';
+                            const segIdx = donutSegments.findIndex(s => s.categoryId === cat.id);
+                            const color = segIdx >= 0 ? POWDER_PINK_DONUT_PALETTE[segIdx % POWDER_PINK_DONUT_PALETTE.length] : '#F3DCE2';
                             const isSelected = selectedDonutSegmentId === cat.id;
 
                             return (
@@ -3172,14 +3558,14 @@ export default function App() {
                                   }
                                 }}
                                 className={`p-1.5 rounded-lg text-right transition flex items-center justify-between ${
-                                  isSelected ? 'bg-[#F1F3EA] border border-[#A7B28E]' : 'hover:bg-gray-50'
+                                  isSelected ? 'bg-[#FADDE4] border border-[#E8A8B7]' : 'hover:bg-[#FFF8FA]'
                                 } ${cat.spent === 0 ? 'opacity-50 cursor-default' : 'cursor-pointer'}`}
                               >
                                 <div className="flex items-center gap-1.5 truncate">
                                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                                  <span className="text-[11px] font-bold text-gray-800 truncate">{cat.name}</span>
+                                  <span className="text-[11px] font-bold text-[#4A353B] truncate">{cat.name}</span>
                                 </div>
-                                <span className="text-[10px] font-black text-gray-700 shrink-0 mr-1">{cat.spent} ج.م</span>
+                                <span className="text-[10px] font-black text-[#4A353B] shrink-0 mr-1">{cat.spent} ج.م</span>
                               </button>
                             );
                           })}
@@ -3191,8 +3577,8 @@ export default function App() {
                   {/* Preset Shortcuts */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs px-1">
-                      <span className="font-bold text-gray-700">نماذج ميزانية مقترحة:</span>
-                      <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 tabular-nums">
+                      <span className="font-bold text-[#4A353B]">نماذج ميزانية مقترحة:</span>
+                      <span className="text-[11px] text-[#C96D84] font-bold bg-[#FADDE4] px-2 py-0.5 rounded-md border border-[#F3DCE2] tabular-nums">
                         إجمالي المخصص: {budgetBreakdown.reduce((sum, item) => sum + item.allocated, 0)} ج.م
                       </span>
                     </div>
@@ -3201,7 +3587,7 @@ export default function App() {
                         <button
                           key={idx}
                           onClick={() => handleApplyPresetAmounts(preset.percentages)}
-                          className="bg-white border border-gray-200 hover:border-[#626B49] text-gray-700 text-xs px-2.5 py-1.5 rounded-xl font-bold whitespace-nowrap shadow-xs transition"
+                          className="bg-white border border-[#F3DCE2] hover:border-[#D47E93] text-[#4A353B] text-xs px-2.5 py-1.5 rounded-xl font-bold whitespace-nowrap shadow-xs transition"
                         >
                           {preset.name}
                         </button>
@@ -3212,10 +3598,10 @@ export default function App() {
                   {/* Feature 1: Category Slices, Progress Bars, Overrun Warnings & Allocation Sliders */}
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between text-xs px-1">
-                      <span className="font-bold text-gray-900">بنود الميزانية والإنفاق:</span>
+                      <span className="font-bold text-[#4A353B]">بنود الميزانية والإنفاق:</span>
                       <button
                         onClick={() => setIsAddCategoryModalOpen(true)}
-                        className="text-xs font-bold text-[#626B49] flex items-center gap-1 hover:underline"
+                        className="text-xs font-bold text-[#C96D84] flex items-center gap-1 hover:underline"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>إضافة بند مخصص</span>
@@ -3226,24 +3612,24 @@ export default function App() {
                       const analytics = calculateCategoryAnalytics(cat.allocated, cat.spent);
 
                       return (
-                        <div key={cat.id} className="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm space-y-2.5">
+                        <div key={cat.id} className="bg-white p-3.5 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-2.5">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center text-[#626B49]">
+                              <div className="w-7 h-7 rounded-full bg-[#FADDE4] flex items-center justify-center text-[#C96D84]">
                                 {renderCategoryIcon(cat.iconName)}
                               </div>
                               <div>
-                                <span className="font-bold text-sm text-gray-800 block">{cat.name}</span>
+                                <span className="font-bold text-sm text-[#4A353B] block">{cat.name}</span>
                                 {cat.isCustom && (
-                                  <span className="text-[9px] bg-[#EFE5C8] text-amber-800 px-1 py-0.2 rounded font-bold">مخصص</span>
+                                  <span className="text-[9px] bg-[#FADDE4] text-[#C96D84] px-1 py-0.2 rounded font-bold">مخصص</span>
                                 )}
                               </div>
                             </div>
                             <div className="text-left">
-                              <span className="bg-[#F1F3EA] text-[#626B49] text-xs font-extrabold px-2 py-0.5 rounded-md inline-block">
+                              <span className="bg-[#FADDE4] text-[#C96D84] text-xs font-extrabold px-2 py-0.5 rounded-md inline-block">
                                 {cat.percentage}% من الميزانية
                               </span>
-                              <span className="text-[10px] text-gray-400 block mt-0.5">
+                              <span className="text-[10px] text-[#8E757C] block mt-0.5">
                                 استهلاك: {analytics.progressPercentage}%
                               </span>
                             </div>
@@ -3252,34 +3638,34 @@ export default function App() {
                           {/* Amount, Spent & Remaining / Exceeded */}
                           <div className="flex items-baseline justify-between text-xs pt-0.5">
                             <div>
-                              <span className="text-base font-black text-[#626B49]">{cat.allocated} ج.م</span>
-                              <span className="text-gray-400 text-[10px] mr-1">المخصص</span>
+                              <span className="text-base font-black text-[#4A353B]">{cat.allocated} ج.م</span>
+                              <span className="text-[#8E757C] text-[10px] mr-1">المخصص</span>
                             </div>
                             <div className="text-left">
-                              <span className="font-bold text-gray-800 block">
+                              <span className="font-bold text-[#4A353B] block">
                                 صُرف: {cat.spent} ج.م
                               </span>
                               {analytics.isOverBudget ? (
-                                <span className="text-rose-600 font-extrabold text-[10px] block">
+                                <span className="text-red-600 font-extrabold text-[10px] block">
                                   تجاوز بـ: {analytics.exceededAmount} ج.م
                                 </span>
                               ) : (
-                                <span className="text-emerald-700 font-semibold text-[10px] block">
+                                <span className="text-[#C96D84] font-semibold text-[10px] block">
                                   متبقي: {analytics.remainingAmount} ج.م
                                 </span>
                               )}
                             </div>
                           </div>
 
-                          {/* Dynamic Color Progress Bar (Green <80%, Amber 80-99%, Red >=100%) */}
-                          <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
+                          {/* Dynamic Color Progress Bar */}
+                          <div className="w-full bg-[#FADDE4]/45 h-2.5 rounded-full overflow-hidden">
                             <div
                               className={`h-full transition-all duration-300 ${
                                 analytics.colorStatus === 'red'
-                                  ? 'bg-rose-500'
+                                  ? 'bg-red-500'
                                   : analytics.colorStatus === 'amber'
-                                  ? 'bg-[#D97706]'
-                                  : 'bg-emerald-500'
+                                  ? 'bg-[#E8A8B7]'
+                                  : 'bg-[#D47E93]'
                               }`}
                               style={{ width: `${analytics.visualPercentage}%` }}
                               role="progressbar"
@@ -3291,25 +3677,25 @@ export default function App() {
 
                           {/* Overrun Warning Badge (Only when spending > allocated) */}
                           {analytics.isOverBudget && (
-                            <div className="bg-rose-50 text-rose-800 text-[11px] font-bold px-2.5 py-1.5 rounded-xl flex items-center justify-between border border-rose-200">
+                            <div className="bg-red-50 text-red-700 text-[11px] font-bold px-2.5 py-1.5 rounded-xl flex items-center justify-between border border-red-200">
                               <div className="flex items-center gap-1.5">
-                                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
                                 <span>تجاوز الميزانية بـ {analytics.exceededAmount} ج.م</span>
                               </div>
-                              <span className="text-[10px] bg-rose-200/80 text-rose-900 px-1.5 py-0.5 rounded font-extrabold">
+                              <span className="text-[10px] bg-red-100 text-red-800 px-1.5 py-0.5 rounded font-extrabold">
                                 {analytics.progressPercentage}% استهلاك
                               </span>
                             </div>
                           )}
 
-                          <p className="text-[11px] text-gray-500 leading-normal">{cat.tip}</p>
+                          <p className="text-[11px] text-[#8E757C] leading-normal">{cat.tip}</p>
 
                           {/* Direct Independent EGP Allocation Controls */}
                           <div className="flex items-center gap-1.5 pt-1">
                             <button
                               type="button"
                               onClick={() => handleUpdateAllocation(cat.id, -100)}
-                              className="min-h-[36px] bg-gray-100 hover:bg-gray-200 text-gray-700 font-extrabold text-xs px-2.5 py-1.5 rounded-lg transition shrink-0"
+                              className="min-h-[36px] bg-[#FFF8FA] border border-[#F3DCE2] hover:bg-[#FADDE4]/40 text-[#4A353B] font-extrabold text-xs px-2.5 py-1.5 rounded-lg transition shrink-0"
                               title="إنقاص 100 ج.م"
                             >
                               -100 ج.م
@@ -3326,16 +3712,16 @@ export default function App() {
                                   const parsed = raw === '' ? 0 : Math.max(0, Math.round(Number(raw) || 0));
                                   handleUpdateAllocation(cat.id, parsed, true);
                                 }}
-                                className="w-full min-h-[36px] text-center font-extrabold text-xs text-[#626B49] bg-[#FBF8F1] border border-[#DDD5C3] rounded-lg px-2 py-1.5 pl-9 focus:outline-none focus:border-[#1E5631]"
+                                className="w-full min-h-[36px] text-center font-extrabold text-xs text-[#4A353B] bg-[#FFF8FA] border border-[#F3DCE2] rounded-lg px-2 py-1.5 pl-9 focus:outline-none focus:border-[#D47E93]"
                               />
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400 pointer-events-none">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-[#8E757C] pointer-events-none">
                                 ج.م
                               </span>
                             </div>
                             <button
                               type="button"
                               onClick={() => handleUpdateAllocation(cat.id, 100)}
-                              className="min-h-[36px] bg-[#EEF6EE] hover:bg-[#DCEAD7] text-[#1E5631] font-extrabold text-xs px-2.5 py-1.5 rounded-lg transition shrink-0"
+                              className="min-h-[36px] bg-[#FADDE4] hover:bg-[#E8A8B7]/50 text-[#C96D84] font-extrabold text-xs px-2.5 py-1.5 rounded-lg transition shrink-0"
                               title="زيادة 100 ج.م"
                             >
                               +100 ج.م
@@ -3347,32 +3733,32 @@ export default function App() {
 
                     <button
                       onClick={handleSaveBudgetPlan}
-                      className="w-full bg-[#626B49] hover:bg-[#1E5631] text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow transition"
+                      className="w-full bg-[#D47E93] hover:bg-[#C96D84] text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow transition"
                     >
-                      <Bookmark className="w-4 h-4 text-[#FFE54C]" />
+                      <Bookmark className="w-4 h-4 text-white" />
                       <span>حفظ خطة الميزانية في المحفوظات</span>
                     </button>
                   </div>
 
                   {/* Expense Records Section */}
-                  <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3">
+                  <div className="bg-white p-4 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="font-extrabold text-xs text-gray-900">سجل المصاريف الحقيقية:</h3>
-                        <span className="text-[10px] text-gray-400">{showAllExpenseHistory ? 'كل المصروفات المسجلة' : 'مصروفات دورة الراتب الحالية'}</span>
+                        <h3 className="font-extrabold text-xs text-[#4A353B]">سجل المصاريف الحقيقية:</h3>
+                        <span className="text-[10px] text-[#8E757C]">{showAllExpenseHistory ? 'كل المصروفات المسجلة' : 'مصروفات دورة الراتب الحالية'}</span>
                       </div>
                       <button
                         type="button"
                         onClick={() => setShowAllExpenseHistory(value => !value)}
-                        className="text-[10px] font-bold text-[#626B49] border border-[#E4DECF] rounded-lg px-2.5 py-1"
+                        className="text-[10px] font-bold text-[#C96D84] border border-[#F3DCE2] bg-[#FFF8FA] rounded-lg px-2.5 py-1"
                       >
                         {showAllExpenseHistory ? 'الدورة الحالية' : 'كل السجل'}
                       </button>
                     </div>
 
-                    <div className="text-[10px] text-gray-400 -mt-1">{showAllExpenseHistory ? 'كل السجل المالي' : `دورة الراتب الحالية: ${payCycleRange.label}`}</div>
+                    <div className="text-[10px] text-[#8E757C] -mt-1">{showAllExpenseHistory ? 'كل السجل المالي' : `دورة الراتب الحالية: ${payCycleRange.label}`}</div>
                     {displayedExpenses.length === 0 ? (
-                      <div className="p-4 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl">
+                      <div className="p-4 text-center text-xs text-[#8E757C] border border-dashed border-[#F3DCE2] rounded-xl">
                         {showAllExpenseHistory ? 'لا توجد مصروفات مسجلة حتى الآن.' : 'لا توجد مصروفات مسجلة في دورة الراتب الحالية. المصروفات السابقة محفوظة ولا تؤثر على رصيد الدورة الجديدة.'}
                       </div>
                     ) : (
@@ -3380,21 +3766,21 @@ export default function App() {
                         {displayedExpenses.slice(0, 5).map(exp => {
                           const cat = categories.find(c => c.id === exp.categoryId);
                           return (
-                            <div key={exp.id} className="p-2.5 rounded-xl border border-gray-100 bg-gray-50 flex items-center justify-between text-xs">
+                            <div key={exp.id} className="p-2.5 rounded-xl border border-[#F3DCE2] bg-[#FFF8FA] flex items-center justify-between text-xs">
                               <div className="flex-1">
                                 <div className="flex items-center gap-1.5">
-                                  <span className="font-bold text-gray-800">{exp.description}</span>
-                                  <span className="text-[10px] bg-[#E8EBDD] text-[#626B49] px-1.5 py-0.2 rounded font-medium">
+                                  <span className="font-bold text-[#4A353B]">{exp.description}</span>
+                                  <span className="text-[10px] bg-[#FADDE4] text-[#C96D84] px-1.5 py-0.2 rounded font-medium">
                                     {cat?.name || 'عام'}
                                   </span>
                                 </div>
-                                <span className="text-[10px] text-gray-400 mt-0.5 block">{exp.date}</span>
+                                <span className="text-[10px] text-[#8E757C] mt-0.5 block">{exp.date}</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="font-black text-[#626B49]">{exp.amount} ج.م</span>
+                                <span className="font-black text-[#4A353B]">{exp.amount} ج.م</span>
                                 <button
                                   onClick={() => handleDeleteExpense(exp.id)}
-                                  className="text-gray-400 hover:text-red-600 p-1"
+                                  className="text-[#8E757C] hover:text-red-600 p-1"
                                   title="حذف"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -3409,24 +3795,24 @@ export default function App() {
 
                   {/* Extra Income Records (Preserved from legacy household finance) */}
                   {extraIncomeRecords.length > 0 && (
-                    <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-2.5">
+                    <div className="bg-white p-4 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-2.5">
                       <div className="flex items-center justify-between">
-                        <h3 className="font-extrabold text-xs text-[#1E5631]">سجل الدخل الإضافي ({extraIncomeRecords.length})</h3>
-                        <span className="text-[10px] text-gray-400">بيانات محفوظة من سجل البيت</span>
+                        <h3 className="font-extrabold text-xs text-[#4A353B]">سجل الدخل الإضافي ({extraIncomeRecords.length})</h3>
+                        <span className="text-[10px] text-[#8E757C]">بيانات محفوظة من سجل البيت</span>
                       </div>
                       <div className="space-y-2">
                         {extraIncomeRecords.map(inc => (
-                          <div key={inc.id} className="p-2.5 rounded-xl border border-emerald-100 bg-emerald-50/60 flex items-center justify-between text-xs">
+                          <div key={inc.id} className="p-2.5 rounded-xl border border-[#F3DCE2] bg-[#FADDE4]/35 flex items-center justify-between text-xs">
                             <div className="flex-1">
-                              <span className="font-bold text-gray-800 block">{inc.description || inc.categoryId}</span>
-                              <span className="text-[10px] text-gray-500">{inc.date} · {inc.categoryId}</span>
+                              <span className="font-bold text-[#4A353B] block">{inc.description || inc.categoryId}</span>
+                              <span className="text-[10px] text-[#8E757C]">{inc.date} · {inc.categoryId}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="font-black text-[#1E5631]">+{inc.amount} ج.م</span>
+                              <span className="font-black text-[#C96D84]">+{inc.amount} ج.م</span>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteExtraIncome(inc.id)}
-                                className="text-gray-400 hover:text-red-600 p-1"
+                                className="text-[#8E757C] hover:text-red-600 p-1"
                                 title="حذف"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -3439,25 +3825,25 @@ export default function App() {
                   )}
 
                   {/* Saved Budget Plans (Consolidated into الميزانية) */}
-                  <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3">
+                  <div className="bg-white p-4 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="font-extrabold text-xs text-gray-900">الميزانيات المحفوظة ({savedBudgets.length})</h3>
-                        <span className="text-[10px] text-gray-400">خطط التقسيم اللي حفظتيها للرجوع لها بدون نت</span>
+                        <h3 className="font-extrabold text-xs text-[#4A353B]">الميزانيات المحفوظة ({savedBudgets.length})</h3>
+                        <span className="text-[10px] text-[#8E757C]">خطط التقسيم اللي حفظتيها للرجوع لها بدون نت</span>
                       </div>
                     </div>
                     {savedBudgets.length === 0 ? (
-                      <div className="p-4 text-center text-xs text-gray-500 border border-dashed border-gray-200 rounded-xl">
+                      <div className="p-4 text-center text-xs text-[#8E757C] border border-dashed border-[#F3DCE2] rounded-xl">
                         لسه مفيش خطط ميزانية محفوظة. بعد تعديل النسب بالأعلى، اضغطي "حفظ خطة الميزانية" لتظهر هنا.
                       </div>
                     ) : (
                       <div className="space-y-2.5">
                         {savedBudgets.map(b => (
-                          <div key={b.id} className="p-3.5 rounded-2xl border border-[#E4DECF] bg-[#FFFDF8] space-y-2">
+                          <div key={b.id} className="p-3.5 rounded-2xl border border-[#F3DCE2] bg-[#FFF8FA] space-y-2">
                             <div className="flex items-center justify-between">
                               <div>
-                                <h4 className="font-bold text-sm text-[#1E5631]">{b.categoryTitle}</h4>
-                                <span className="text-xs font-extrabold text-gray-800">{b.totalAmount} جنيه مصري</span>
+                                <h4 className="font-bold text-sm text-[#4A353B]">{b.categoryTitle}</h4>
+                                <span className="text-xs font-extrabold text-[#C96D84]">{b.totalAmount} جنيه مصري</span>
                               </div>
                               <button
                                 type="button"
@@ -3468,11 +3854,11 @@ export default function App() {
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
-                            <div className="text-xs space-y-1 pt-1 border-t border-gray-100">
+                            <div className="text-xs space-y-1 pt-1 border-t border-[#F3DCE2]">
                               {b.slices.map((s, idx) => (
-                                <div key={idx} className="flex justify-between text-gray-600">
+                                <div key={idx} className="flex justify-between text-[#8E757C]">
                                   <span>{s.name} ({s.percentage}%)</span>
-                                  <span className="font-bold text-gray-800">{Math.round(s.amount)} ج.م</span>
+                                  <span className="font-bold text-[#4A353B]">{Math.round(s.amount)} ج.م</span>
                                 </div>
                               ))}
                             </div>
@@ -3493,16 +3879,16 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setActiveTab('home')}
-                      className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 min-h-[40px]"
+                      className="inline-flex items-center gap-1 rounded-xl border border-[#F3DCE2] bg-white px-3 py-2 text-xs font-bold text-[#4A353B] min-h-[40px]"
                     >
                       <ChevronRight className="h-4 w-4" /> رجوع للرئيسية
                     </button>
-                    <span className="text-xs bg-[#D8C69A] text-[#626B49] font-black px-2.5 py-1 rounded-full">كل جنيه ليه قيمة 💛</span>
+                    <span className="text-xs bg-[#FADDE4] text-[#C96D84] font-black px-2.5 py-1 rounded-full">كل جنيه ليه قيمة 💛</span>
                   </div>
 
                   <div>
-                    <h2 className="text-lg font-extrabold text-[#626B49]">تدبيرة اليوم 💡</h2>
-                    <p className="text-xs text-gray-500 mt-0.5">
+                    <h2 className="text-lg font-extrabold text-[#4A353B]">تدبيرة اليوم 💡</h2>
+                    <p className="text-xs text-[#8E757C] mt-0.5">
                       وفّر بذكاء، ودبّر بيتك، وخلي كل جنيه في مكانه مع حيل يومية مجربة.
                     </p>
                   </div>
@@ -3510,31 +3896,31 @@ export default function App() {
                   {/* Daily Signature Challenge */}
                   <div className={`p-4 rounded-2xl border transition ${
                     dailyCompleted
-                      ? 'bg-emerald-50 border-emerald-300'
-                      : 'bg-[#FFE54C]/25 border-[#D8C69A]'
+                      ? 'bg-[#FADDE4]/65 border-[#D47E93]'
+                      : 'bg-[#FFFFFF] border-[#F3DCE2]'
                   }`}>
                     <div className="flex items-center justify-between">
                       <span className={`text-xs font-black px-2.5 py-0.5 rounded-md ${
-                        dailyCompleted ? 'bg-emerald-600 text-white' : 'bg-[#626B49] text-white'
+                        dailyCompleted ? 'bg-[#C96D84] text-white' : 'bg-[#D47E93] text-white'
                       }`}>
                         {dailyCompleted ? 'تم إنجاز التحدي! 🎉' : '🎯 تدبيرتك النهارده'}
                       </span>
-                      <span className="text-[11px] text-gray-500">{todayDateKey}</span>
+                      <span className="text-[11px] text-[#8E757C]">{todayDateKey}</span>
                     </div>
 
-                    <h3 className="font-extrabold text-sm text-gray-900 mt-2">{todayChallenge.title}</h3>
-                    <p className="text-xs text-gray-700 mt-1 leading-relaxed">{todayChallenge.description}</p>
-                    <span className="inline-block mt-2 text-[11px] text-amber-800 bg-[#EFE5C8] font-semibold px-2 py-0.5 rounded">
+                    <h3 className="font-extrabold text-sm text-[#4A353B] mt-2">{todayChallenge.title}</h3>
+                    <p className="text-xs text-[#8E757C] mt-1 leading-relaxed">{todayChallenge.description}</p>
+                    <span className="inline-block mt-2 text-[11px] text-[#C96D84] bg-[#FADDE4] font-semibold px-2 py-0.5 rounded">
                       ✨ {todayChallenge.impactTag}
                     </span>
 
-                    <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-200/60">
+                    <div className="flex items-center justify-between mt-3 pt-2 border-t border-[#F3DCE2]">
                       <button
                         onClick={toggleDailyCompletion}
                         className={`text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
                           dailyCompleted
-                            ? 'bg-emerald-600 text-white shadow-sm'
-                            : 'bg-white border border-gray-300 text-gray-800 hover:bg-gray-50'
+                            ? 'bg-[#D47E93] text-white shadow-sm'
+                            : 'bg-white border border-[#F3DCE2] text-[#4A353B] hover:bg-[#FFF8FA]'
                         }`}
                       >
                         <Check className="w-3.5 h-3.5" />
@@ -3543,7 +3929,7 @@ export default function App() {
 
                       <button
                         onClick={handleShareDailyChallenge}
-                        className="text-xs font-bold text-[#626B49] bg-white border border-gray-200 hover:bg-[#F1F3EA] px-3 py-1.5 rounded-lg flex items-center gap-1 transition"
+                        className="text-xs font-bold text-[#C96D84] bg-white border border-[#F3DCE2] hover:bg-[#FADDE4]/40 px-3 py-1.5 rounded-lg flex items-center gap-1 transition"
                       >
                         <Share2 className="w-3.5 h-3.5" />
                         <span>مشاركة الإنجاز</span>
@@ -3552,19 +3938,19 @@ export default function App() {
                   </div>
 
                   {/* Phase 4C: Achievement Counter & "أفكاري المحفوظة" Toggle Banner */}
-                  <div className="bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50 p-3 rounded-2xl border border-[#E6D9B8]/80 shadow-sm flex items-center justify-between">
+                  <div className="bg-[#FFFFFF] p-3 rounded-2xl border border-[#F3DCE2] shadow-sm flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-[#D8C69A] text-[#626B49] font-black flex items-center justify-center text-sm shadow-inner shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-[#FADDE4] text-[#C96D84] font-black flex items-center justify-center text-sm shadow-inner shrink-0">
                         🏆
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5">
-                          <span className="font-extrabold text-xs text-gray-900">إنجازات تدابير التوفير:</span>
-                          <span className="bg-[#626B49] text-white text-[10px] font-black px-2 py-0.2 rounded-full">
+                          <span className="font-extrabold text-xs text-[#4A353B]">إنجازات تدابير التوفير:</span>
+                          <span className="bg-[#D47E93] text-white text-[10px] font-black px-2 py-0.2 rounded-full">
                             {calculateUniqueAchievementCount(triedTipIds)} حيل مُجربة
                           </span>
                         </div>
-                        <span className="text-[10px] text-gray-500 block">
+                        <span className="text-[10px] text-[#8E757C] block">
                           {triedTipIds.length > 0
                             ? `عاش! جربت ${calculateUniqueAchievementCount(triedTipIds)} حيل ووفرت في بيتك`
                             : 'اضغط "جربت الحيلة دي ووفرت" لحساب إنجازاتك'}
@@ -3578,8 +3964,8 @@ export default function App() {
                       onClick={() => setDailyTipsViewMode(prev => prev === 'saved' ? 'all' : 'saved')}
                       className={`text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1 border shrink-0 ${
                         dailyTipsViewMode === 'saved'
-                          ? 'bg-[#626B49] text-white border-[#626B49] shadow-xs'
-                          : 'bg-white text-[#626B49] border-[#DCE2D0] hover:bg-[#F1F3EA]'
+                          ? 'bg-[#D47E93] text-white border-[#D47E93] shadow-xs'
+                          : 'bg-[#FADDE4]/60 text-[#C96D84] border-[#F3DCE2] hover:bg-[#FADDE4]'
                       }`}
                       title="عرض الحيل التي حفظتها للرجوع إليها"
                     >
@@ -3596,22 +3982,22 @@ export default function App() {
                         value={dailySearch}
                         onChange={(e) => setDailySearch(e.target.value)}
                         placeholder="ابحث في أفكار التوفير والمنزل..."
-                        className="w-full text-xs bg-white border border-gray-200 rounded-xl py-2 px-3 pl-8 focus:outline-none focus:border-[#626B49]"
+                        className="w-full text-xs bg-white border border-[#F3DCE2] text-[#4A353B] rounded-xl py-2 px-3 pl-8 focus:outline-none focus:border-[#D47E93]"
                       />
-                      <Search className="w-4 h-4 text-gray-400 absolute left-2.5 top-2.5" />
+                      <Search className="w-4 h-4 text-[#8E757C] absolute left-2.5 top-2.5" />
                     </div>
 
                     {/* Active Saved Mode Indicator */}
                     {dailyTipsViewMode === 'saved' && (
-                      <div className="bg-[#F1F3EA] border border-[#DCE2D0] rounded-xl px-3 py-1.5 flex items-center justify-between text-xs">
-                        <span className="font-bold text-[#626B49] flex items-center gap-1">
-                          <Bookmark className="w-3.5 h-3.5 fill-[#626B49]" />
+                      <div className="bg-[#FADDE4]/50 border border-[#F3DCE2] rounded-xl px-3 py-1.5 flex items-center justify-between text-xs">
+                        <span className="font-bold text-[#C96D84] flex items-center gap-1">
+                          <Bookmark className="w-3.5 h-3.5 fill-[#C96D84]" />
                           <span>عرض أفكاري المحفوظة ({filteredDailyIdeas.length})</span>
                         </span>
                         <button
                           type="button"
                           onClick={() => setDailyTipsViewMode('all')}
-                          className="text-[11px] font-bold text-gray-600 hover:text-[#626B49] underline"
+                          className="text-[11px] font-bold text-[#8E757C] hover:text-[#C96D84] underline"
                         >
                           عرض كل الحيل
                         </button>
@@ -3626,8 +4012,8 @@ export default function App() {
                           onClick={() => setSelectedDailyCategory(cat)}
                           className={`px-3 py-1 rounded-xl whitespace-nowrap font-bold transition ${
                             selectedDailyCategory === cat
-                              ? 'bg-[#626B49] text-white shadow-xs'
-                              : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                              ? 'bg-[#D47E93] text-white shadow-xs'
+                              : 'bg-white border border-[#F3DCE2] text-[#4A353B] hover:bg-[#FFF8FA]'
                           }`}
                         >
                           {cat}
@@ -3639,11 +4025,11 @@ export default function App() {
                   {/* Curated Tips List */}
                   <div className="space-y-3">
                     {filteredDailyIdeas.length === 0 ? (
-                      <div className="bg-white p-6 rounded-2xl border border-dashed border-gray-300 text-center space-y-2">
-                        <div className="w-10 h-10 rounded-full bg-[#F1F3EA] text-[#626B49] mx-auto flex items-center justify-center font-bold text-lg">
+                      <div className="bg-white p-6 rounded-2xl border border-dashed border-[#F3DCE2] text-center space-y-2">
+                        <div className="w-10 h-10 rounded-full bg-[#FADDE4] text-[#C96D84] mx-auto flex items-center justify-center font-bold text-lg">
                           💡
                         </div>
-                        <p className="text-xs font-bold text-gray-800">
+                        <p className="text-xs font-bold text-[#4A353B]">
                           {dailyTipsViewMode === 'saved'
                             ? 'لسه مفيش حيل محفوظة. احفظ أي تدبيرة عجبتك علشان ترجع لها وقت ما تحتاجها.'
                             : 'لا توجد حيل مطابقة لهذا التصنيف حالياً. اختر تصنيفاً آخر أو اضغط "الكل".'}
@@ -3655,7 +4041,7 @@ export default function App() {
                             setSelectedDailyCategory('الكل');
                             setDailySearch('');
                           }}
-                          className="text-xs font-bold text-[#626B49] bg-[#F1F3EA] hover:bg-[#E8EBDD] px-3 py-1.5 rounded-xl transition"
+                          className="text-xs font-bold text-[#C96D84] bg-[#FADDE4] hover:bg-[#E8A8B7]/50 px-3 py-1.5 rounded-xl transition"
                         >
                           عرض كل الحيل 💡
                         </button>
@@ -3667,9 +4053,9 @@ export default function App() {
                         const isBrokenImg = brokenImages[idea.id];
 
                         return (
-                          <div key={idea.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden space-y-2.5">
+                          <div key={idea.id} className="bg-white rounded-2xl border border-[#F3DCE2] shadow-sm overflow-hidden space-y-2.5">
                             {/* Visual Banner */}
-                            <div className="relative h-28 w-full bg-gray-100 overflow-hidden">
+                            <div className="relative h-28 w-full bg-[#FFF8FA] overflow-hidden">
                               {!isBrokenImg ? (
                                 <img
                                   src={idea.imageUrl}
@@ -3694,40 +4080,40 @@ export default function App() {
 
                             <div className="p-3.5 pt-0 space-y-2">
                               <div className="flex items-start justify-between gap-2">
-                                <h4 className="font-bold text-sm text-gray-900 leading-snug">{idea.title}</h4>
+                                <h4 className="font-bold text-sm text-[#4A353B] leading-snug">{idea.title}</h4>
                                 {isTried && (
-                                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-md shrink-0 flex items-center gap-1">
-                                    <Check className="w-3 h-3 text-emerald-600" />
+                                  <span className="bg-[#FADDE4] text-[#C96D84] text-[10px] font-black px-2 py-0.5 rounded-md shrink-0 flex items-center gap-1">
+                                    <Check className="w-3 h-3 text-[#C96D84]" />
                                     <span>مُجربة</span>
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs text-gray-600 leading-relaxed">{idea.description}</p>
+                              <p className="text-xs text-[#8E757C] leading-relaxed">{idea.description}</p>
 
-                              <div className="bg-[#F1F3EA]/70 p-2 rounded-xl text-[11px] text-[#626B49] flex items-center gap-1.5">
+                              <div className="bg-[#FFF8FA] border border-[#F3DCE2] p-2 rounded-xl text-[11px] text-[#4A353B] flex items-center gap-1.5">
                                 <span>💡</span>
                                 <span className="font-medium">{idea.practicalTip}</span>
                               </div>
 
                               {/* Tags display */}
-                              <div className="flex flex-wrap gap-1 text-[10px] text-gray-500 pt-0.5">
+                              <div className="flex flex-wrap gap-1 text-[10px] text-[#8E757C] pt-0.5">
                                 {idea.tags.map((tag, tIdx) => (
-                                  <span key={tIdx} className="bg-gray-100 px-1.5 py-0.2 rounded text-gray-600">
+                                  <span key={tIdx} className="bg-[#FFF8FA] border border-[#F3DCE2] px-1.5 py-0.2 rounded text-[#8E757C]">
                                     #{tag}
                                   </span>
                                 ))}
                               </div>
 
                               {/* Interactive Actions */}
-                              <div className="flex items-center justify-between pt-2 border-t border-gray-100 gap-1.5">
+                              <div className="flex items-center justify-between pt-2 border-t border-[#F3DCE2] gap-1.5">
                                 {/* Phase 4C: Interactive "جربت الحيلة دي ووفرت" Button */}
                                 <button
                                   type="button"
                                   onClick={() => handleToggleTriedTip(idea.id)}
                                   className={`text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 transition ${
                                     isTried
-                                      ? 'bg-emerald-600 text-white shadow-xs ring-1 ring-emerald-300'
-                                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                      ? 'bg-[#D47E93] text-white shadow-xs ring-1 ring-[#E8A8B7]'
+                                      : 'bg-[#FADDE4] hover:bg-[#E8A8B7]/50 text-[#C96D84] border border-[#F3DCE2]'
                                   }`}
                                   title="سجل أنك طبقت هذه الحيلة في بيتك"
                                 >
@@ -3742,12 +4128,12 @@ export default function App() {
                                     onClick={() => toggleSaveTip(idea.id)}
                                     className={`text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 transition border ${
                                       isSaved
-                                        ? 'bg-[#EFE5C8] text-[#765B3A] border-amber-300'
-                                        : 'bg-gray-50 hover:bg-gray-100 text-gray-600 border-gray-200'
+                                        ? 'bg-[#FADDE4] text-[#C96D84] border-[#E8A8B7]'
+                                        : 'bg-[#FFF8FA] hover:bg-[#FADDE4]/40 text-[#8E757C] border-[#F3DCE2]'
                                     }`}
                                     title="حفظ في أفكاري المحفوظة"
                                   >
-                                    <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-amber-600 text-amber-600' : ''}`} />
+                                    <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-[#C96D84] text-[#C96D84]' : ''}`} />
                                     <span>{isSaved ? 'محفوظة' : 'حفظ'}</span>
                                   </button>
 
@@ -3755,7 +4141,7 @@ export default function App() {
                                   <button
                                     type="button"
                                     onClick={() => handleShareTip(idea)}
-                                    className="text-xs font-bold text-[#626B49] hover:bg-[#F1F3EA] px-2.5 py-1.5 rounded-xl border border-gray-200 flex items-center gap-1 transition"
+                                    className="text-xs font-bold text-[#C96D84] hover:bg-[#FADDE4]/40 px-2.5 py-1.5 rounded-xl border border-[#F3DCE2] flex items-center gap-1 transition"
                                     title="مشاركة النصيحة"
                                   >
                                     <Share2 className="w-3.5 h-3.5" />
@@ -3777,8 +4163,8 @@ export default function App() {
               {activeTab === 'saved' && (
                 <div className="space-y-4">
                   <div>
-                    <h2 className="text-lg font-extrabold text-[#1E5631]">التسوق ومخزون البيت 🛒</h2>
-                    <p className="text-xs text-gray-500 mt-0.5">
+                    <h2 className="text-lg font-extrabold text-[#4A353B]">التسوق ومخزون البيت 🛒</h2>
+                    <p className="text-xs text-[#8E757C] mt-0.5">
                       تابعي مخزون البيت، سجّلي نواقص السوق، شاركيها على واتساب، أو اطلبي أونلاين بسهولة.
                     </p>
                   </div>
@@ -3788,9 +4174,35 @@ export default function App() {
 
                   {/* 2. قائمة المشتريات والنواقص (Shopping List / النواقص) */}
                   <div className="space-y-3">
-                    {/* Financial Grand Total Banner */}
-                    <div className="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm space-y-2.5">
-                      <ShoppingTotalsSummary totals={shoppingTotals} items={shoppingItems} />
+                    {/* Financial Grand Total Banner & Live Market Sync */}
+                    <div className="bg-white p-3.5 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-2.5">
+                      <ShoppingTotalsSummary
+                        totals={shoppingTotals}
+                        items={shoppingItems}
+                        isFetchingPrices={isRefreshingMarketPrices || Object.keys(fetchingPriceKeys).length > 0}
+                      />
+
+                      <div className="pt-2 border-t border-[#F3DCE2] flex flex-wrap items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleRefreshMarketPrices()}
+                          disabled={isRefreshingMarketPrices}
+                          className="min-h-[34px] bg-[#FADDE4] hover:bg-[#E8A8B7]/60 text-[#C96D84] border border-[#F3DCE2] px-3 py-1.5 rounded-xl text-[11px] font-extrabold inline-flex items-center gap-1.5 transition disabled:opacity-60"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingMarketPrices ? 'animate-spin' : ''}`} />
+                          <span>
+                            {isRefreshingMarketPrices
+                              ? 'جاري تحديث الأسعار الحقيقية...'
+                              : 'تحديث الأسعار من السوق المصري 🔄'}
+                          </span>
+                        </button>
+
+                        {lastMarketSyncAt && (
+                          <span className="text-[10px] font-medium text-[#8E757C]">
+                            آخر تحديث: {formatMarketSyncDateTime(lastMarketSyncAt)}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between pt-1 text-xs">
@@ -3802,7 +4214,7 @@ export default function App() {
                           setNewItemUnitPrice('');
                           setIsAddItemModalOpen(true);
                         }}
-                        className="min-h-[40px] bg-[#1E5631] hover:bg-[#2E7D32] text-white px-3.5 py-2 rounded-xl font-bold flex items-center gap-1 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
+                        className="min-h-[40px] bg-[#D47E93] hover:bg-[#C96D84] text-white px-3.5 py-2 rounded-xl font-bold flex items-center gap-1 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>إضافة طلب جديد</span>
@@ -3815,7 +4227,7 @@ export default function App() {
                               setShoppingItems(prev => prev.filter(i => !i.isChecked));
                               showToast('تم مسح الأصناف المشتراة');
                             }}
-                            className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
+                            className="bg-[#FADDE4] hover:bg-[#E8A8B7]/50 text-[#C96D84] px-2.5 py-1 rounded-lg text-xs font-semibold transition"
                           >
                             مسح المكتمل
                           </button>
@@ -3833,14 +4245,14 @@ export default function App() {
 
                     {/* Empty State or Shopping Items List */}
                     {shoppingItems.length === 0 ? (
-                      <div className="bg-white p-8 rounded-3xl text-center border border-dashed border-gray-300 space-y-3">
-                        <div className="w-14 h-14 bg-[#F1F3EA] text-[#626B49] rounded-full mx-auto flex items-center justify-center shadow-inner">
+                      <div className="bg-white p-8 rounded-3xl text-center border border-dashed border-[#F3DCE2] space-y-3">
+                        <div className="w-14 h-14 bg-[#FADDE4] text-[#C96D84] rounded-full mx-auto flex items-center justify-center shadow-inner">
                           <ShoppingCart className="w-7 h-7" />
                         </div>
-                        <h4 className="text-base font-extrabold text-gray-800">
+                        <h4 className="text-base font-extrabold text-[#4A353B]">
                           لا توجد نواقص حاليًا.. دولاب خزينك تمام! 🧺
                         </h4>
-                        <p className="text-xs text-gray-500 leading-relaxed max-w-xs mx-auto">
+                        <p className="text-xs text-[#8E757C] leading-relaxed max-w-xs mx-auto">
                           تقدر تضيف طلبات بالضغط على زر &quot;إضافة طلب جديد&quot; أو من مخزون البيت أعلاه أو من أي وصفة في المطبخ.
                         </p>
                       </div>
@@ -3848,14 +4260,18 @@ export default function App() {
                       <div className="space-y-2">
                         {shoppingItems.map(item => {
                           const lineTotal = calculateLineTotal(item.quantity, item.unitPrice);
+                          const itemKey = normalizeMarketItemKey(item.name, item.unit);
+                          const isFetchingThisPrice = Boolean(fetchingPriceKeys[itemKey]);
+                          const cachedRecord = getVerifiedEgyptPrice(item.name, item.unit);
+                          const effectiveSource = item.priceSource || cachedRecord?.source || null;
 
                           return (
                             <div
                               key={item.id}
                               className={`p-3 rounded-2xl border transition ${
                                 item.isChecked
-                                  ? 'bg-gray-50/70 border-gray-200 opacity-70'
-                                  : 'bg-white border-gray-200 shadow-xs'
+                                  ? 'bg-[#FFF8FA] border-[#F3DCE2] opacity-70'
+                                  : 'bg-white border-[#F3DCE2] shadow-xs'
                               }`}
                             >
                               <div className="flex items-start justify-between gap-2">
@@ -3864,48 +4280,59 @@ export default function App() {
                                   onClick={() => {
                                     setShoppingItems(prev => prev.map(i => i.id === item.id ? { ...i, isChecked: !i.isChecked } : i));
                                   }}
-                                  className="flex items-center gap-2.5 cursor-pointer flex-1"
+                                  className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0"
                                 >
-                                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition ${
-                                    item.isChecked ? 'bg-[#626B49] border-[#626B49] text-white' : 'border-gray-300 bg-white'
+                                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border shrink-0 transition ${
+                                    item.isChecked ? 'bg-[#D47E93] border-[#D47E93] text-white' : 'border-[#E8A8B7] bg-white'
                                   }`}>
                                     {item.isChecked && <Check className="w-3.5 h-3.5" />}
                                   </div>
-                                  <div>
-                                    <span className={`text-xs font-bold ${item.isChecked ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                                  <div className="min-w-0">
+                                    <span className={`text-xs font-bold block truncate ${item.isChecked ? 'line-through text-[#8E757C]' : 'text-[#4A353B]'}`}>
                                       {item.name}
                                     </span>
-                                    <div className="flex items-center gap-1.5 mt-0.5">
-                                      {item.unitPrice !== null ? (
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                      {isFetchingThisPrice ? (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#C96D84] bg-[#FADDE4] px-2 py-0.5 rounded-full border border-[#F3DCE2]">
+                                          <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                          <span>جاري جلب السعر الحقيقي...</span>
+                                        </span>
+                                      ) : item.unitPrice !== null ? (
                                         <button
+                                          type="button"
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             setEditingPriceItem({
                                               id: item.id,
                                               name: item.name,
+                                              unit: item.unit,
                                               currentPrice: item.unitPrice !== null ? item.unitPrice.toString() : ''
                                             });
                                           }}
-                                          className="text-[10px] text-gray-500 hover:text-[#626B49] flex items-center gap-0.5"
-                                          title="اضغط لتعديل سعر الوحدة"
+                                          className="text-[10px] text-[#C96D84] bg-[#FADDE4]/80 hover:bg-[#FADDE4] px-2 py-0.5 rounded-full border border-[#F3DCE2] font-bold flex items-center gap-1 transition"
+                                          title="اضغط لتعديل السعر أو التحقق من السوق"
                                         >
-                                          <span>سعر الوحدة: {item.unitPrice} ج.م</span>
-                                          <Edit3 className="w-2.5 h-2.5 text-gray-400" />
+                                          <span>{item.unitPrice} ج.م/{item.unit}</span>
+                                          <span className="text-[9px] text-[#8E757C]">
+                                            • {effectiveSource === 'user_verified' ? 'سعرك المسجل' : 'مُحدّث من السوق'}
+                                          </span>
+                                          <Edit3 className="w-2.5 h-2.5 text-[#C96D84]" />
                                         </button>
                                       ) : (
                                         <button
+                                          type="button"
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             setEditingPriceItem({
                                               id: item.id,
                                               name: item.name,
+                                              unit: item.unit,
                                               currentPrice: ''
                                             });
                                           }}
-                                          className="text-[10px] text-amber-700 font-bold bg-[#F7F0DE] hover:bg-[#EFE5C8] px-1.5 py-0.5 rounded border border-[#E6D9B8] flex items-center gap-1"
+                                          className="text-[10px] text-[#C96D84] font-bold bg-[#FADDE4] hover:bg-[#E8A8B7]/60 px-2.5 py-0.5 rounded-full border border-[#F3DCE2] flex items-center gap-1 transition"
                                         >
-                                          <span>السعر غير محدد</span>
-                                          <span className="text-[#626B49] underline">حدد السعر</span>
+                                          <span>أدخلي السعر +</span>
                                         </button>
                                       )}
                                     </div>
@@ -3913,43 +4340,58 @@ export default function App() {
                                 </div>
 
                                 {/* Quantity Stepper & Line Total */}
-                                <div className="flex items-center gap-2">
-                                  <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <div className="flex items-center bg-[#FFF8FA] border border-[#F3DCE2] rounded-lg p-0.5">
                                     <button
                                       onClick={() => updateItemQty(item.id, -0.5)}
-                                      className="w-5 h-5 rounded text-gray-600 hover:bg-gray-200 font-bold flex items-center justify-center text-xs"
+                                      className="w-5 h-5 rounded text-[#C96D84] hover:bg-[#FADDE4] font-bold flex items-center justify-center text-xs"
                                       title="إنقاص الكمية"
                                     >
                                       -
                                     </button>
-                                    <span className="px-1.5 text-xs font-bold text-gray-800">
+                                    <span className="px-1.5 text-xs font-bold text-[#4A353B]">
                                       {item.quantity} {item.unit}
                                     </span>
                                     <button
                                       onClick={() => updateItemQty(item.id, 0.5)}
-                                      className="w-5 h-5 rounded text-gray-600 hover:bg-gray-200 font-bold flex items-center justify-center text-xs"
+                                      className="w-5 h-5 rounded text-[#C96D84] hover:bg-[#FADDE4] font-bold flex items-center justify-center text-xs"
                                       title="زيادة الكمية"
                                     >
                                       +
                                     </button>
                                   </div>
 
-                                  {/* Line Total Display (Never NaN) */}
-                                  <div className="text-left min-w-[65px]">
+                                  {/* Line Total or Clean Powder Pink Prompt Pill */}
+                                  <div className="text-left min-w-[68px]">
                                     {lineTotal !== null ? (
-                                      <span className="font-black text-xs text-[#626B49] block">
+                                      <span className="font-black text-xs text-[#C96D84] block">
                                         {Math.round(lineTotal)} ج.م
                                       </span>
-                                    ) : (
-                                      <span className="text-[10px] font-bold text-amber-700 bg-[#F7F0DE] px-1.5 py-0.5 rounded block">
-                                        غير مسعر
+                                    ) : isFetchingThisPrice ? (
+                                      <span className="inline-flex items-center justify-center text-[10px] font-bold text-[#C96D84] bg-[#FADDE4] px-2 py-0.5 rounded-full">
+                                        ...
                                       </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setEditingPriceItem({
+                                            id: item.id,
+                                            name: item.name,
+                                            unit: item.unit,
+                                            currentPrice: ''
+                                          })
+                                        }
+                                        className="text-[10px] font-bold text-[#C96D84] bg-[#FADDE4] hover:bg-[#E8A8B7]/60 px-2 py-0.5 rounded-full border border-[#F3DCE2] whitespace-nowrap transition"
+                                      >
+                                        أدخلي السعر +
+                                      </button>
                                     )}
                                   </div>
 
                                   <button
                                     onClick={() => setShoppingItems(prev => prev.filter(i => i.id !== item.id))}
-                                    className="text-gray-400 hover:text-red-600 p-1"
+                                    className="text-[#8E757C] hover:text-red-600 p-1"
                                     title="حذف"
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -3966,7 +4408,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={handleShareShoppingWhatsApp}
-                      className="w-full min-h-[46px] bg-[#1E5631] hover:bg-[#2E7D32] text-white font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
+                      className="w-full min-h-[46px] bg-[#D47E93] hover:bg-[#C96D84] text-white font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
                       title="مشاركة الأصناف غير المشتراة عبر تطبيق واتساب"
                     >
                       <Share2 className="w-4 h-4" />
@@ -3974,13 +4416,13 @@ export default function App() {
                     </button>
 
                     {/* 4. روابط الطلب أونلاين (متاجر التوصيل) */}
-                    <div className="bg-[#F5F0E5]/90 p-3.5 rounded-2xl border border-[#E4DECF] shadow-sm space-y-2.5">
-                      <div className="flex items-center justify-between gap-2 border-b border-[#E4DECF] pb-2">
+                    <div className="bg-[#FFFFFF] p-3.5 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-2.5">
+                      <div className="flex items-center justify-between gap-2 border-b border-[#F3DCE2] pb-2">
                         <div className="flex items-center gap-1.5">
-                          <ShoppingCart className="w-4 h-4 text-[#1E5631] shrink-0" />
-                          <h3 className="text-xs font-extrabold text-[#1E5631]">روابط الطلب أونلاين (متاجر التوصيل)</h3>
+                          <ShoppingCart className="w-4 h-4 text-[#C96D84] shrink-0" />
+                          <h3 className="text-xs font-extrabold text-[#4A353B]">روابط الطلب أونلاين (متاجر التوصيل)</h3>
                         </div>
-                        <span className="text-[10px] font-bold text-[#6E675A]">
+                        <span className="text-[10px] font-bold text-[#8E757C]">
                           {shoppingItems.some(i => !i.isChecked)
                             ? `${shoppingItems.filter(i => !i.isChecked).length} نواقص`
                             : 'متاجر مصر'}
@@ -3996,13 +4438,13 @@ export default function App() {
                               href={deal.affiliateTrackingUrl || deal.officialUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="bg-white hover:border-[#1E5631] p-2.5 rounded-xl border border-[#E6DFCE] shadow-xs flex flex-col justify-between gap-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
+                              className="bg-[#FFF8FA] hover:border-[#D47E93] p-2.5 rounded-xl border border-[#F3DCE2] shadow-xs flex flex-col justify-between gap-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
                             >
                               <div className="flex items-center justify-between gap-1">
-                                <span className="font-extrabold text-[11px] text-gray-900 truncate">{deal.partnerName}</span>
-                                <ExternalLink className="w-3 h-3 text-[#1E5631] shrink-0" />
+                                <span className="font-extrabold text-[11px] text-[#4A353B] truncate">{deal.partnerName}</span>
+                                <ExternalLink className="w-3 h-3 text-[#C96D84] shrink-0" />
                               </div>
-                              <span className="text-[10px] font-bold text-[#1E5631]">
+                              <span className="text-[10px] font-bold text-[#C96D84]">
                                 {hasMissing ? `اطلب من ${deal.shortName}` : `تصفح ${deal.shortName}`}
                               </span>
                             </a>
@@ -4010,7 +4452,7 @@ export default function App() {
                         })}
                       </div>
 
-                      <p className="text-[10px] text-[#6E675A] text-center leading-relaxed">
+                      <p className="text-[10px] text-[#8E757C] text-center leading-relaxed">
                         روابط مباشرة للمواقع الرسمية للمتاجر — قد يحصل تطبيق تدبيرة على عمولة بسيطة لدعم استمرار التطوير المجاني.
                       </p>
                     </div>
@@ -4024,7 +4466,7 @@ export default function App() {
             {/* GOOGLE ADMOB BANNER (Dedicated Container Above Bottom Nav) */}
             {/* ======================================================== */}
             <div
-              className={`transition-all duration-300 ease-in-out border-t border-gray-200 bg-white shrink-0 ${
+              className={`transition-all duration-300 ease-in-out border-t border-[#F3DCE2] bg-white shrink-0 ${
                 adStatus === 'failed' || adStatus === 'disabled'
                   ? 'h-0 py-0 border-transparent opacity-0 overflow-hidden'
                   : 'h-[72px] py-1 px-3 flex flex-col justify-center'
@@ -4034,17 +4476,17 @@ export default function App() {
                 {/* Policy Header Bar: Clear 'إعلان' Tag & Non-Deceptive Separation */}
                 <div className="flex items-center justify-between text-[10px] pb-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="bg-gray-200 text-gray-700 font-bold px-1.5 py-0.2 rounded text-[9px]">
+                    <span className="bg-[#FADDE4] text-[#C96D84] font-bold px-1.5 py-0.2 rounded text-[9px]">
                       إعلان
                     </span>
-                    <span className="text-[10px] text-gray-500 font-medium truncate max-w-[190px]">
+                    <span className="text-[10px] text-[#8E757C] font-medium truncate max-w-[190px]">
                       {IS_DEV ? 'AdMob Test • 320x50' : 'Google AdMob'}
                     </span>
                   </div>
                   {IS_DEV && (
                     <button
                       onClick={() => setIsAdControlsOpen(true)}
-                      className="text-[9px] text-[#626B49] font-bold hover:underline"
+                      className="text-[9px] text-[#C96D84] font-bold hover:underline"
                     >
                       اختبار الحالة ⚙️
                     </button>
@@ -4054,30 +4496,30 @@ export default function App() {
                 {/* Banner Area (Fixed 50px Height Reservation) */}
                 <div className="h-[50px] w-full rounded-lg overflow-hidden relative">
                   {adStatus === 'loaded' && (
-                    <div className="h-full w-full bg-gradient-to-r from-[#F1F5EC] via-amber-50 to-[#EEF1E8] border border-[#DCE2D0]/80 rounded-lg flex items-center justify-between px-3 text-xs select-none shadow-inner">
+                    <div className="h-full w-full bg-[#FFF8FA] border border-[#F3DCE2] rounded-lg flex items-center justify-between px-3 text-xs select-none shadow-inner">
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-md bg-[#626B49] text-[#D8C69A] font-black text-[10px] flex items-center justify-center shrink-0">
+                        <div className="w-6 h-6 rounded-md bg-[#D47E93] text-white font-black text-[10px] flex items-center justify-center shrink-0">
                           Ad
                         </div>
                         <div>
-                          <span className="font-extrabold text-[#626B49] block leading-tight text-[11px]">
+                          <span className="font-extrabold text-[#4A353B] block leading-tight text-[11px]">
                             Google AdMob • Test Ad
                           </span>
-                          <span className="text-[10px] text-gray-600 block leading-tight">
+                          <span className="text-[10px] text-[#8E757C] block leading-tight">
                             تدبيرة مصر: وفّر في ميزانية بيتك مع بدائل الأكل الذكية
                           </span>
                         </div>
                       </div>
-                      <span className="text-[9px] font-bold bg-amber-200/80 text-[#765B3A] px-2 py-0.5 rounded-full shrink-0">
+                      <span className="text-[9px] font-bold bg-[#FADDE4] text-[#C96D84] px-2 py-0.5 rounded-full shrink-0">
                         Sample Unit
                       </span>
                     </div>
                   )}
 
                   {adStatus === 'loading' && (
-                    <div className="h-full w-full bg-gray-100 border border-dashed border-gray-300 rounded-lg flex items-center justify-center gap-2 px-3 text-xs animate-pulse">
-                      <div className="w-4 h-4 border-2 border-[#626B49] border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-[11px] text-gray-500 font-medium">
+                    <div className="h-full w-full bg-[#FFF8FA] border border-dashed border-[#F3DCE2] rounded-lg flex items-center justify-center gap-2 px-3 text-xs animate-pulse">
+                      <div className="w-4 h-4 border-2 border-[#D47E93] border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-[11px] text-[#8E757C] font-medium">
                         جارِ حجز المساحة وتحميل إعلان AdMob...
                       </span>
                     </div>
@@ -4086,7 +4528,7 @@ export default function App() {
               </div>
             </div>
 
-            <nav className="tadbeera-bottom-nav bg-[#FFFEFA] border-t border-[#E8E0D1] pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shrink-0 shadow-[0_-5px_20px_rgba(83,75,54,0.06)]" aria-label="التنقل الرئيسي">
+            <nav className="tadbeera-bottom-nav bg-[#FFF8FA] border-t border-[#F3DCE2] pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shrink-0 shadow-[0_-5px_20px_rgba(74,53,59,0.06)]" aria-label="التنقل الرئيسي">
               <div className="w-full max-w-2xl mx-auto px-1.5 grid grid-cols-5">
                 {([
                   { id: 'home', label: 'الرئيسية', Icon: Home },
@@ -4096,7 +4538,7 @@ export default function App() {
                   { id: 'budget', label: 'الميزانية', Icon: Wallet }
                 ] as const).map(({ id, label, Icon }) => (
                   <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id || (id === 'home' && activeTab === 'daily') ? 'page' : undefined}
-                    className={activeTab === id || (id === 'home' && activeTab === 'daily') ? "flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[#5F7651] bg-[#EEF1E8] font-extrabold" : "flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[#999487]"}>
+                    className={activeTab === id || (id === 'home' && activeTab === 'daily') ? "flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[#C96D84] bg-[#FADDE4] font-extrabold" : "flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[#8E757C]"}>
                     <Icon className="w-5 h-5" strokeWidth={activeTab === id || (id === 'home' && activeTab === 'daily') ? 2.5 : 1.9} />
                     <span className="text-[10px] leading-4">{label}</span>
                   </button>
@@ -4110,15 +4552,15 @@ export default function App() {
       {/* ---------------- MODAL 1: RECIPE DETAILS ---------------- */}
       {/* ======================================================== */}
       {selectedRecipeModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-5 shadow-2xl max-h-[88vh] overflow-y-auto space-y-4">
+        <div className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] max-h-[88vh] overflow-y-auto space-y-4">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h3 className="text-lg font-extrabold text-[#626B49]">{selectedRecipeModal.name}</h3>
-                <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                <h3 className="text-lg font-extrabold text-[#4A353B]">{selectedRecipeModal.name}</h3>
+                <div className="flex items-center gap-2 mt-1 text-xs text-[#8E757C]">
                   <span>⏱️ {selectedRecipeModal.prepTimeMinutes} دقيقة</span>
                   <span>•</span>
-                  <span className="text-[#626B49] font-bold">
+                  <span className="text-[#C96D84] font-bold">
                     💵 ~{getScaledCost(selectedRecipeModal)} ج.م ({familySize} أفراد)
                   </span>
                 </div>
@@ -4131,15 +4573,15 @@ export default function App() {
                   title={savedRecipeIds.includes(selectedRecipeModal.id) ? 'إزالة من المحفوظات' : 'حفظ الوصفة'}
                   className={`flex h-9 w-9 items-center justify-center rounded-xl border transition ${
                     savedRecipeIds.includes(selectedRecipeModal.id)
-                      ? 'border-[#D8C69A] bg-[#F7F0DE] text-[#765B3A]'
-                      : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'
+                      ? 'border-[#E8A8B7] bg-[#FADDE4] text-[#C96D84]'
+                      : 'border-[#F3DCE2] bg-[#FFF8FA] text-[#8E757C] hover:bg-[#FADDE4]/40'
                   }`}
                 >
-                  <Bookmark className={`h-4 w-4 ${savedRecipeIds.includes(selectedRecipeModal.id) ? 'fill-[#765B3A]' : ''}`} />
+                  <Bookmark className={`h-4 w-4 ${savedRecipeIds.includes(selectedRecipeModal.id) ? 'fill-[#C96D84]' : ''}`} />
                 </button>
                 <button
                   onClick={closeSelectedRecipeModal}
-                  className="text-gray-400 hover:text-gray-600 text-lg font-bold p-1"
+                  className="text-[#8E757C] hover:text-[#4A353B] text-lg font-bold p-1"
                   aria-label="إغلاق"
                 >
                   ✕
@@ -4148,7 +4590,7 @@ export default function App() {
             </div>
 
             {/* 100% Offline Visual Header (Real image if reachable, seamless dish artwork fallback) */}
-            <div className="overflow-hidden rounded-2xl border border-[#E4DECF] bg-[#F3EBDD]">
+            <div className="overflow-hidden rounded-2xl border border-[#F3DCE2] bg-[#FFF8FA]">
               {selectedRecipeModal.imageUrl && !brokenImages[selectedRecipeModal.id] ? (
                 <img
                   src={selectedRecipeModal.imageUrl}
@@ -4170,14 +4612,14 @@ export default function App() {
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <p className="text-[11px] text-gray-500 bg-gray-50 p-2.5 rounded-xl border border-gray-100 flex-1">
+              <p className="text-[11px] text-[#8E757C] bg-[#FFF8FA] p-2.5 rounded-xl border border-[#F3DCE2] flex-1">
                 🏷️ تكلفة تقديرية محسوبة لـ {familySize} أفراد تختلف حسب الأسعار بالأسواق المصرية.
               </p>
               <button
                 type="button"
                 onClick={() => void (isModalSpeaking ? stopSelectedRecipeSpeech() : speakSelectedRecipe(selectedRecipeModal))}
                 className={`shrink-0 inline-flex min-h-[42px] items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-white transition ${
-                  isModalSpeaking ? 'bg-red-600 hover:bg-red-700' : 'bg-[#1E5631] hover:bg-[#2E7D32]'
+                  isModalSpeaking ? 'bg-red-600 hover:bg-red-700' : 'bg-[#D47E93] hover:bg-[#C96D84]'
                 }`}
               >
                 {isModalSpeaking ? <><VolumeX className="w-4 h-4" /> إيقاف</> : <><Volume2 className="w-4 h-4" /> اسمع الوصفة</>}
@@ -4187,26 +4629,26 @@ export default function App() {
             {/* Ingredients Scaled */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h4 className="font-bold text-xs text-gray-800">المكونات المطلوبة (لـ {familySize} أفراد):</h4>
-                <span className="text-[10px] text-gray-400">كميات دقيقة</span>
+                <h4 className="font-bold text-xs text-[#4A353B]">المكونات المطلوبة (لـ {familySize} أفراد):</h4>
+                <span className="text-[10px] text-[#8E757C]">كميات دقيقة</span>
               </div>
-              <ul className="text-xs text-gray-700 space-y-2">
+              <ul className="text-xs text-[#4A353B] space-y-2">
                 {selectedRecipeModal.ingredients.map((ing, i) => {
                   const isAvailable = selectedIngredients.some(sel => ing.name.includes(sel) || sel.includes(ing.name));
                   const scaled = getScaledIngredient(ing, selectedRecipeModal.baseServings);
 
                   return (
-                    <li key={i} className="p-3 rounded-xl bg-gray-50 border border-gray-100 space-y-1.5">
+                    <li key={i} className="p-3 rounded-xl bg-[#FFF8FA] border border-[#F3DCE2] space-y-1.5">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex flex-col items-start gap-1">
-                          <span className={isAvailable ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
+                          <span className={isAvailable ? 'text-[#C96D84] font-bold' : 'text-[#8E757C] font-bold'}>
                             {isAvailable ? '✓' : '✗'}
                           </span>
-                          <span className="font-bold text-gray-900">{ing.name}</span>
-                          <span className="text-xs font-semibold text-[#626B49] bg-[#F1F3EA] px-2 py-1 rounded-lg">{scaled.text}</span>
+                          <span className="font-bold text-[#4A353B]">{ing.name}</span>
+                          <span className="text-xs font-semibold text-[#C96D84] bg-[#FADDE4] px-2 py-1 rounded-lg">{scaled.text}</span>
                         </div>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                          isAvailable ? 'bg-emerald-100 text-emerald-800' : 'bg-[#EFE5C8] text-amber-800'
+                          isAvailable ? 'bg-[#FADDE4] text-[#C96D84]' : 'bg-white border border-[#F3DCE2] text-[#8E757C]'
                         }`}>
                           {isAvailable ? 'متوفر' : 'ناقص'}
                         </span>
@@ -4214,10 +4656,10 @@ export default function App() {
 
                       {/* Practical Alternative Suggestion if missing */}
                       {!isAvailable && ing.alternatives && ing.alternatives.length > 0 && (
-                        <div className="mt-1 pt-1 border-t border-gray-200/60 text-[11px] text-gray-600 bg-[#F7F0DE]/60 p-1.5 rounded-lg">
-                          <span className="font-bold text-[#765B3A]">بديل عملي مقترح: </span>
-                          <span className="font-bold text-gray-900">{ing.alternatives[0].name}</span>
-                          <p className="text-[10px] text-gray-500 mt-0.5">{ing.alternatives[0].impact}</p>
+                        <div className="mt-1 pt-1 border-t border-[#F3DCE2] text-[11px] text-[#8E757C] bg-white p-1.5 rounded-lg">
+                          <span className="font-bold text-[#C96D84]">بديل عملي مقترح: </span>
+                          <span className="font-bold text-[#4A353B]">{ing.alternatives[0].name}</span>
+                          <p className="text-[10px] text-[#8E757C] mt-0.5">{ing.alternatives[0].impact}</p>
                         </div>
                       )}
                     </li>
@@ -4228,12 +4670,12 @@ export default function App() {
 
             {/* Cooking Steps */}
             <div>
-              <h4 className="font-bold text-xs text-gray-800 mb-2">طريقة التحضير خطوة بخطوة:</h4>
+              <h4 className="font-bold text-xs text-[#4A353B] mb-2">طريقة التحضير خطوة بخطوة:</h4>
               <div className="space-y-2.5">
                 {selectedRecipeModal.steps.map((st, i) => (
-                  <div key={i} className="flex items-start gap-3 rounded-xl border border-[#E4DECF] bg-[#F1F3EA]/50 p-3">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#626B49] text-xs font-extrabold text-white">{['١','٢','٣','٤','٥','٦','٧','٨','٩','١٠'][i] || String(i + 1)}</span>
-                    <p className="min-w-0 flex-1 text-sm leading-7 font-medium text-gray-800">{st}</p>
+                  <div key={i} className="flex items-start gap-3 rounded-xl border border-[#F3DCE2] bg-[#FFF8FA] p-3">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#D47E93] text-xs font-extrabold text-white">{['١','٢','٣','٤','٥','٦','٧','٨','٩','١٠'][i] || String(i + 1)}</span>
+                    <p className="min-w-0 flex-1 text-sm leading-7 font-medium text-[#4A353B]">{st}</p>
                   </div>
                 ))}
               </div>
@@ -4248,14 +4690,14 @@ export default function App() {
                   handleAddMissingToShopping(missing, selectedRecipeModal.baseServings);
                   closeSelectedRecipeModal();
                 }}
-                className="flex-1 bg-white border border-[#626B49] text-[#626B49] font-bold py-2.5 rounded-xl text-xs hover:bg-[#F1F3EA] transition flex items-center justify-center gap-1"
+                className="flex-1 bg-white border border-[#D47E93] text-[#C96D84] font-bold py-2.5 rounded-xl text-xs hover:bg-[#FADDE4]/40 transition flex items-center justify-center gap-1"
               >
                 <ShoppingCart className="w-3.5 h-3.5" />
                 <span>إضافة النواقص لقائمة المشتريات</span>
               </button>
               <button
                 onClick={closeSelectedRecipeModal}
-                className="bg-[#626B49] text-white font-bold py-2.5 px-4 rounded-xl text-xs hover:bg-[#1E5631] transition"
+                className="bg-[#D47E93] text-white font-bold py-2.5 px-4 rounded-xl text-xs hover:bg-[#C96D84] transition"
               >
                 تمام، فهمت
               </button>
@@ -4268,24 +4710,24 @@ export default function App() {
       {/* ---------------- MODAL 2: ADD SHOPPING ITEM ------------- */}
       {/* ======================================================== */}
       {isAddItemModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-3">
-            <h3 className="text-base font-extrabold text-[#626B49]">إضافة طلب لقائمة النواقص</h3>
+        <div className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] space-y-3">
+            <h3 className="text-base font-extrabold text-[#4A353B]">إضافة طلب لقائمة النواقص</h3>
             <div className="space-y-2.5 text-xs">
               <div>
-                <label className="block text-gray-700 font-bold mb-1">اسم الصنف:</label>
+                <label className="block text-[#4A353B] font-bold mb-1">اسم الصنف:</label>
                 <input
                   type="text"
                   value={newItemName}
                   onChange={(e) => setNewItemName(e.target.value)}
                   placeholder="مثال: جبنة قريش، عدس، عيش بلدي"
-                  className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                  className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-gray-700 font-bold mb-1">الكمية:</label>
+                  <label className="block text-[#4A353B] font-bold mb-1">الكمية:</label>
                   <input
                     type="number"
                     step="0.5"
@@ -4293,15 +4735,15 @@ export default function App() {
                     value={newItemQty}
                     onChange={(e) => setNewItemQty(e.target.value)}
                     placeholder="1"
-                    className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                    className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                   />
                 </div>
                 <div>
-                  <label className="block text-gray-700 font-bold mb-1">الوحدة:</label>
+                  <label className="block text-[#4A353B] font-bold mb-1">الوحدة:</label>
                   <select
                     value={newItemUnit}
                     onChange={(e) => setNewItemUnit(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                    className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                   >
                     <option value="حبة">حبة</option>
                     <option value="كيلو">كيلو</option>
@@ -4317,8 +4759,8 @@ export default function App() {
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-gray-700 font-bold">سعر الوحدة التقديري (بالجنيه):</label>
-                  <span className="text-[10px] text-gray-400">اختياري - اتركه فارغاً إذا كان غير محدد</span>
+                  <label className="text-[#4A353B] font-bold">سعر الوحدة التقديري (بالجنيه):</label>
+                  <span className="text-[10px] text-[#8E757C]">اختياري - اتركه فارغاً إذا كان غير محدد</span>
                 </div>
                 <input
                   type="number"
@@ -4327,7 +4769,7 @@ export default function App() {
                   value={newItemUnitPrice}
                   onChange={(e) => setNewItemUnitPrice(e.target.value)}
                   placeholder="مثال: 15 (أو اتركه فارغاً)"
-                  className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                  className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                 />
               </div>
             </div>
@@ -4335,25 +4777,56 @@ export default function App() {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setIsAddItemModalOpen(false)}
-                className="flex-1 bg-gray-100 text-gray-700 font-bold py-2 rounded-xl text-xs hover:bg-gray-200 transition"
+                className="flex-1 bg-[#FADDE4] text-[#C96D84] font-bold py-2 rounded-xl text-xs hover:bg-[#E8A8B7]/50 transition"
               >
                 إلغاء
               </button>
               <button
                 onClick={() => {
                   if (newItemName.trim()) {
+                    const cleanName = newItemName.trim();
+                    const cleanUnit = newItemUnit.trim() || 'حبة';
                     const parsedQty = parseSafeQuantity(newItemQty);
-                    const parsedPrice = parseSafePrice(newItemUnitPrice); // Returns null if empty string
+                    const parsedPrice = parseSafePrice(newItemUnitPrice);
+                    const nowIso = new Date().toISOString();
+                    let resolvedPrice = parsedPrice !== null && parsedPrice > 0 ? parsedPrice : null;
+                    let resolvedSource: ShoppingItem['priceSource'] =
+                      resolvedPrice !== null ? 'user_verified' : null;
+                    let resolvedUpdatedAt: string | null = resolvedPrice !== null ? nowIso : null;
+                    let resolvedSourceLabel: string | null =
+                      resolvedPrice !== null ? 'سعرك المسجل' : null;
+
+                    if (resolvedPrice !== null) {
+                      saveVerifiedEgyptPrice({
+                        itemName: cleanName,
+                        unit: cleanUnit,
+                        typicalPrice: resolvedPrice,
+                        source: 'user_verified',
+                        sourceLabel: 'سعرك المسجل',
+                        fetchedAt: nowIso,
+                      });
+                    } else {
+                      const cached = getVerifiedEgyptPrice(cleanName, cleanUnit) || lookupEgypt2026MarketPrice(cleanName, cleanUnit);
+                      if (cached) {
+                        resolvedPrice = cached.typicalPrice;
+                        resolvedSource = cached.source;
+                        resolvedUpdatedAt = cached.fetchedAt;
+                        resolvedSourceLabel = cached.sourceLabel;
+                      }
+                    }
 
                     setShoppingItems(prev => [
                       ...prev,
                       {
                         id: Math.random().toString(36).substring(2, 9),
-                        name: newItemName.trim(),
+                        name: cleanName,
                         quantity: parsedQty,
-                        unit: newItemUnit.trim() || 'حبة',
-                        unitPrice: parsedPrice,
-                        isChecked: false
+                        unit: cleanUnit,
+                        unitPrice: resolvedPrice,
+                        isChecked: false,
+                        ...(resolvedSource ? { priceSource: resolvedSource } : {}),
+                        ...(resolvedUpdatedAt ? { priceUpdatedAt: resolvedUpdatedAt } : {}),
+                        ...(resolvedSourceLabel ? { priceSourceLabel: resolvedSourceLabel } : {}),
                       }
                     ]);
                     setNewItemName('');
@@ -4365,7 +4838,7 @@ export default function App() {
                     showToast('يرجى إدخال اسم الصنف أولاً');
                   }
                 }}
-                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#1E5631] transition"
+                className="flex-1 bg-[#D47E93] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#C96D84] transition"
               >
                 إضافة للقائمة
               </button>
@@ -4378,21 +4851,33 @@ export default function App() {
       {/* ---------- MODAL 2.5: EDIT ITEM UNIT PRICE ----------- */}
       {/* ======================================================== */}
       {editingPriceItem && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-3">
+        <div className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-extrabold text-[#626B49]">تحديد سعر الوحدة</h3>
-              <button onClick={() => setEditingPriceItem(null)} className="text-gray-400 hover:text-gray-600">
+              <h3 className="text-base font-extrabold text-[#4A353B]">تحديد سعر الوحدة</h3>
+              <button onClick={() => setEditingPriceItem(null)} className="text-[#8E757C] hover:text-[#4A353B]">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-gray-600">
-              صنف: <span className="font-bold text-gray-900">{editingPriceItem.name}</span>
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-[#8E757C]">
+                صنف: <span className="font-bold text-[#4A353B]">{editingPriceItem.name}</span>{' '}
+                <span className="text-[11px] text-[#C96D84]">({editingPriceItem.unit})</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleFetchModalLivePrice()}
+                disabled={isFetchingSingleModalPrice}
+                className="bg-[#FADDE4] hover:bg-[#E8A8B7]/60 text-[#C96D84] border border-[#F3DCE2] text-[10px] font-bold px-2.5 py-1 rounded-full inline-flex items-center gap-1 transition disabled:opacity-60"
+              >
+                <RefreshCw className={`w-3 h-3 ${isFetchingSingleModalPrice ? 'animate-spin' : ''}`} />
+                <span>{isFetchingSingleModalPrice ? 'جاري الجلب...' : 'جلب من السوق'}</span>
+              </button>
+            </div>
 
             <div className="space-y-1">
-              <label className="block text-xs font-bold text-gray-700">سعر الوحدة بالجنيه المصري:</label>
+              <label className="block text-xs font-bold text-[#4A353B]">سعر الوحدة بالجنيه المصري:</label>
               <input
                 type="number"
                 min="0"
@@ -4400,22 +4885,24 @@ export default function App() {
                 autoFocus
                 value={editingPriceItem.currentPrice}
                 onChange={(e) => setEditingPriceItem({ ...editingPriceItem, currentPrice: e.target.value })}
-                placeholder="مثال: 20 (أو امسحه ليكون غير مسعر)"
-                className="w-full border border-gray-300 rounded-xl p-2.5 font-bold text-[#626B49] focus:outline-none focus:border-[#626B49]"
+                placeholder="اكتبي السعر الحقيقي بالجنيه (مثال: 20)"
+                className="w-full border border-[#F3DCE2] bg-[#FFF8FA] rounded-xl p-2.5 font-bold text-[#4A353B] focus:outline-none focus:border-[#D47E93]"
               />
-              <span className="text-[10px] text-gray-400 block">إذا تركت الحقل فارغاً سيعتبر الصنف غير محدد السعر.</span>
+              <span className="text-[10px] text-[#8E757C] block">
+                سيتم حفظ السعر كـ &quot;سعرك المسجل&quot; للاستخدام الفوري في مرات التسوق القادمة.
+              </span>
             </div>
 
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setEditingPriceItem(null)}
-                className="flex-1 bg-gray-100 text-gray-700 font-bold py-2 rounded-xl text-xs hover:bg-gray-200 transition"
+                className="flex-1 bg-[#FADDE4] text-[#C96D84] font-bold py-2 rounded-xl text-xs hover:bg-[#E8A8B7]/50 transition"
               >
                 إلغاء
               </button>
               <button
                 onClick={handleSaveItemPrice}
-                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#1E5631] transition"
+                className="flex-1 bg-[#D47E93] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#C96D84] transition"
               >
                 حفظ السعر
               </button>
@@ -4428,12 +4915,12 @@ export default function App() {
       {/* ---------------- MODAL 3: ADD EXPENSE RECORD ----------- */}
       {/* ======================================================== */}
       {isAddExpenseModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-3">
-            <h3 className="text-base font-extrabold text-[#626B49]">تسجيل مصروف جديد</h3>
+        <div className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] space-y-3">
+            <h3 className="text-base font-extrabold text-[#4A353B]">تسجيل مصروف جديد</h3>
             <div className="space-y-2.5 text-xs">
               <div>
-                <label className="block text-gray-700 font-bold mb-1">المبلغ المدفوع (ج.م):</label>
+                <label className="block text-[#4A353B] font-bold mb-1">المبلغ المدفوع (ج.م):</label>
                 <input
                   type="number"
                   min="0.1"
@@ -4441,16 +4928,16 @@ export default function App() {
                   value={expenseAmount}
                   onChange={(e) => setExpenseAmount(e.target.value)}
                   placeholder="مثال: 120"
-                  className="w-full border border-gray-300 rounded-xl p-2.5 font-bold text-[#626B49] focus:outline-none focus:border-[#626B49]"
+                  className="w-full border border-[#F3DCE2] bg-[#FFF8FA] rounded-xl p-2.5 font-bold text-[#4A353B] focus:outline-none focus:border-[#D47E93]"
                 />
               </div>
 
               <div>
-                <label className="block text-gray-700 font-bold mb-1">بند المصروف:</label>
+                <label className="block text-[#4A353B] font-bold mb-1">بند المصروف:</label>
                 <select
                   value={expenseCategoryId}
                   onChange={(e) => setExpenseCategoryId(e.target.value)}
-                  className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                  className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                 >
                   {categories.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
@@ -4459,23 +4946,23 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-gray-700 font-bold mb-1">البيان / الوصف:</label>
+                <label className="block text-[#4A353B] font-bold mb-1">البيان / الوصف:</label>
                 <input
                   type="text"
                   value={expenseDesc}
                   onChange={(e) => setExpenseDesc(e.target.value)}
                   placeholder="مثال: خضار وسوق الأسبوع، فاتورة مياه"
-                  className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                  className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                 />
               </div>
 
               <div>
-                <label className="block text-gray-700 font-bold mb-1">تاريخ الصرف:</label>
+                <label className="block text-[#4A353B] font-bold mb-1">تاريخ الصرف:</label>
                 <input
                   type="date"
                   value={expenseDate}
                   onChange={(e) => setExpenseDate(e.target.value)}
-                  className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                  className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                 />
               </div>
             </div>
@@ -4483,13 +4970,13 @@ export default function App() {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setIsAddExpenseModalOpen(false)}
-                className="flex-1 bg-gray-100 text-gray-700 font-bold py-2 rounded-xl text-xs hover:bg-gray-200 transition"
+                className="flex-1 bg-[#FADDE4] text-[#C96D84] font-bold py-2 rounded-xl text-xs hover:bg-[#E8A8B7]/50 transition"
               >
                 إلغاء
               </button>
               <button
                 onClick={handleAddExpense}
-                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#1E5631] transition"
+                className="flex-1 bg-[#D47E93] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#C96D84] transition"
               >
                 تسجيل وحفظ
               </button>
@@ -4502,29 +4989,29 @@ export default function App() {
       {/* ---------------- MODAL 4: ADD CUSTOM CATEGORY --------- */}
       {/* ======================================================== */}
       {isAddCategoryModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-3">
-            <h3 className="text-base font-extrabold text-[#626B49]">إضافة بند ميزانية مخصص</h3>
+        <div className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] space-y-3">
+            <h3 className="text-base font-extrabold text-[#4A353B]">إضافة بند ميزانية مخصص</h3>
             <div className="space-y-2.5 text-xs">
               <div>
-                <label className="block text-gray-700 font-bold mb-1">اسم البند:</label>
+                <label className="block text-[#4A353B] font-bold mb-1">اسم البند:</label>
                 <input
                   type="text"
                   value={newCatName}
                   onChange={(e) => setNewCatName(e.target.value)}
                   placeholder="مثال: دروس خصوصية، علاج وصيدلية"
-                  className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                  className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                 />
               </div>
 
               <div>
-                <label className="block text-gray-700 font-bold mb-1">نصيحة أو تفاصيل البند:</label>
+                <label className="block text-[#4A353B] font-bold mb-1">نصيحة أو تفاصيل البند:</label>
                 <input
                   type="text"
                   value={newCatTip}
                   onChange={(e) => setNewCatTip(e.target.value)}
                   placeholder="مثال: مصروفات كتب خارجية واشتراكات المدارس"
-                  className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                  className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                 />
               </div>
             </div>
@@ -4532,13 +5019,13 @@ export default function App() {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setIsAddCategoryModalOpen(false)}
-                className="flex-1 bg-gray-100 text-gray-700 font-bold py-2 rounded-xl text-xs hover:bg-gray-200 transition"
+                className="flex-1 bg-[#FADDE4] text-[#C96D84] font-bold py-2 rounded-xl text-xs hover:bg-[#E8A8B7]/50 transition"
               >
                 إلغاء
               </button>
               <button
                 onClick={handleAddCustomCategory}
-                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#1E5631] transition"
+                className="flex-1 bg-[#D47E93] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#C96D84] transition"
               >
                 إضافة وإعادة ضبط 100%
               </button>
@@ -4551,25 +5038,25 @@ export default function App() {
       {/* ---------- MODAL 4.5: PAYDAY DATE CONFIGURATION -------- */}
       {/* ======================================================== */}
       {isPaydayModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-              <div className="flex items-center gap-2 text-[#626B49]">
-                <Calendar className="w-5 h-5 text-[#D8C69A]" />
+        <div className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] space-y-4">
+            <div className="flex items-center justify-between border-b border-[#F3DCE2] pb-2">
+              <div className="flex items-center gap-2 text-[#4A353B]">
+                <Calendar className="w-5 h-5 text-[#C96D84]" />
                 <h3 className="text-base font-extrabold">تحديد موعد الراتب الشهري</h3>
               </div>
-              <button onClick={() => setIsPaydayModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setIsPaydayModalOpen(false)} className="text-[#8E757C] hover:text-[#4A353B]">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <p className="text-gray-600 leading-relaxed">
+              <p className="text-[#8E757C] leading-relaxed">
                 اختر يوم نزول راتبك الشهري (من يوم 1 إلى 31). سيقوم التطبيق بحساب الأيام المتبقية تلقائياً وتحديد الحد اليومي المقترح للصرف حتى موعد الراتب القادم.
               </p>
 
               <div>
-                <label className="block text-gray-700 font-bold mb-1">يوم صرف الراتب (1 - 31):</label>
+                <label className="block text-[#4A353B] font-bold mb-1">يوم صرف الراتب (1 - 31):</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -4577,19 +5064,19 @@ export default function App() {
                     max="31"
                     value={tempPaydayInput}
                     onChange={(e) => setTempPaydayInput(e.target.value)}
-                    className="flex-1 text-center font-black text-lg text-[#626B49] border border-gray-300 rounded-xl p-2 focus:outline-none focus:border-[#626B49]"
+                    className="flex-1 text-center font-black text-lg text-[#4A353B] border border-[#F3DCE2] bg-[#FFF8FA] rounded-xl p-2 focus:outline-none focus:border-[#D47E93]"
                     placeholder="25"
                   />
-                  <span className="text-xs font-bold text-gray-500">من كل شهر</span>
+                  <span className="text-xs font-bold text-[#8E757C]">من كل شهر</span>
                 </div>
-                <span className="text-[10px] text-gray-400 block mt-1">
+                <span className="text-[10px] text-[#8E757C] block mt-1">
                   * في الشهور الأقصر (مثل فبراير 28 أو أبريل 30 يوماً)، يتم استخدام آخر يوم في الشهر تلقائياً.
                 </span>
               </div>
 
               {/* Quick Day Chips */}
               <div>
-                <span className="text-[11px] font-bold text-gray-600 block mb-1.5">أيام شائعة:</span>
+                <span className="text-[11px] font-bold text-[#8E757C] block mb-1.5">أيام شائعة:</span>
                 <div className="flex flex-wrap gap-1.5">
                   {[1, 5, 20, 25, 27, 28, 30].map(day => (
                     <button
@@ -4598,8 +5085,8 @@ export default function App() {
                       onClick={() => setTempPaydayInput(day.toString())}
                       className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
                         tempPaydayInput === day.toString()
-                          ? 'bg-[#626B49] text-white shadow-xs'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          ? 'bg-[#D47E93] text-white shadow-xs'
+                          : 'bg-[#FFF8FA] border border-[#F3DCE2] text-[#4A353B] hover:bg-[#FADDE4]/50'
                       }`}
                     >
                       يوم {day}
@@ -4612,7 +5099,7 @@ export default function App() {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setIsPaydayModalOpen(false)}
-                className="flex-1 bg-gray-100 text-gray-700 font-bold py-2.5 rounded-xl text-xs hover:bg-gray-200 transition"
+                className="flex-1 bg-[#FADDE4] text-[#C96D84] font-bold py-2.5 rounded-xl text-xs hover:bg-[#E8A8B7]/50 transition"
               >
                 إلغاء
               </button>
@@ -4627,7 +5114,7 @@ export default function App() {
                     showToast('يرجى إدخال يوم صالح بين 1 و 31');
                   }
                 }}
-                className="flex-1 bg-[#626B49] text-white font-bold py-2.5 rounded-xl text-xs hover:bg-[#1E5631] transition"
+                className="flex-1 bg-[#D47E93] text-white font-bold py-2.5 rounded-xl text-xs hover:bg-[#C96D84] transition"
               >
                 حفظ الموعد
               </button>
@@ -4640,24 +5127,24 @@ export default function App() {
       {/* ---------------- MODAL 5: SETTINGS & BACKUPS ---------- */}
       {/* ======================================================== */}
       {isSettingsModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-              <div className="flex items-center gap-2 text-[#626B49]">
-                <Settings className="w-5 h-5" />
+        <div className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] space-y-4">
+            <div className="flex items-center justify-between border-b border-[#F3DCE2] pb-2">
+              <div className="flex items-center gap-2 text-[#4A353B]">
+                <Settings className="w-5 h-5 text-[#C96D84]" />
                 <h3 className="text-base font-extrabold">إعدادات التطبيق والبيانات</h3>
               </div>
-              <button onClick={() => setIsSettingsModalOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold">
+              <button onClick={() => setIsSettingsModalOpen(false)} className="text-[#8E757C] hover:text-[#4A353B] font-bold">
                 ✕
               </button>
             </div>
 
             {/* Household profile: saved locally and available offline */}
-            <div className="space-y-2 rounded-2xl border border-[#E4DECF] bg-[#F1F3EA]/50 p-3">
-              <div className="flex items-center gap-2 text-[#626B49]">
-                <Users className="w-4 h-4" />
+            <div className="space-y-2 rounded-2xl border border-[#F3DCE2] bg-[#FFF8FA] p-3">
+              <div className="flex items-center gap-2 text-[#4A353B]">
+                <Users className="w-4 h-4 text-[#C96D84]" />
                 <span className="text-xs font-extrabold">بيانات الأسرة</span>
-                <span className="mr-auto text-[10px] text-gray-500">محفوظة على جهازك</span>
+                <span className="mr-auto text-[10px] text-[#8E757C]">محفوظة على جهازك</span>
               </div>
               <input
                 type="text"
@@ -4665,7 +5152,7 @@ export default function App() {
                 onChange={(e) => setHouseholdName(e.target.value)}
                 placeholder="اسم الأسرة (اختياري)"
                 maxLength={60}
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#626B49]"
+                className="w-full rounded-xl border border-[#F3DCE2] bg-white px-3 py-2 text-xs text-[#4A353B] outline-none focus:border-[#D47E93]"
               />
               <div className="grid grid-cols-2 gap-2">
                 <input
@@ -4674,7 +5161,7 @@ export default function App() {
                   onChange={(e) => setHouseholdGovernorate(e.target.value)}
                   placeholder="المحافظة"
                   maxLength={40}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#626B49]"
+                  className="w-full rounded-xl border border-[#F3DCE2] bg-white px-3 py-2 text-xs text-[#4A353B] outline-none focus:border-[#D47E93]"
                 />
                 <input
                   type="text"
@@ -4682,10 +5169,10 @@ export default function App() {
                   onChange={(e) => setHouseholdCity(e.target.value)}
                   placeholder="المدينة / المركز"
                   maxLength={40}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-[#626B49]"
+                  className="w-full rounded-xl border border-[#F3DCE2] bg-white px-3 py-2 text-xs text-[#4A353B] outline-none focus:border-[#D47E93]"
                 />
               </div>
-              <div className="text-[10px] text-gray-600">عدد أفراد الأسرة: {familySize} · العملة: جنيه مصري</div>
+              <div className="text-[10px] text-[#8E757C]">عدد أفراد الأسرة: {familySize} · العملة: جنيه مصري</div>
               <button
                 type="button"
                 onClick={() => {
@@ -4701,7 +5188,7 @@ export default function App() {
                   });
                   showToast(saved ? 'تم حفظ بيانات الأسرة على هذا الجهاز ✓' : 'تعذر حفظ البيانات. تحققي من مساحة التخزين بالجهاز.');
                 }}
-                className="w-full rounded-xl bg-[#626B49] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#1E5631]"
+                className="w-full rounded-xl bg-[#D47E93] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#C96D84]"
               >
                 حفظ بيانات الأسرة
               </button>
@@ -4709,25 +5196,25 @@ export default function App() {
 
             {/* Backups & Data Management */}
             <div className="space-y-2">
-              <span className="text-xs font-bold text-gray-700 block">النسخ الاحتياطي والاستعادة:</span>
+              <span className="text-xs font-bold text-[#4A353B] block">النسخ الاحتياطي والاستعادة:</span>
 
               <button
                 onClick={handleExportData}
-                className="w-full bg-[#F1F3EA] hover:bg-[#E8EBDD] text-[#626B49] font-bold p-2.5 rounded-xl text-xs flex items-center justify-between transition border border-[#DCE2D0]"
+                className="w-full bg-[#FADDE4]/60 hover:bg-[#FADDE4] text-[#C96D84] font-bold p-2.5 rounded-xl text-xs flex items-center justify-between transition border border-[#F3DCE2]"
               >
                 <div className="flex items-center gap-2">
-                  <FileDown className="w-4 h-4 text-[#626B49]" />
+                  <FileDown className="w-4 h-4 text-[#C96D84]" />
                   <span>تصدير نسخة احتياطية (JSON)</span>
                 </div>
-                <span className="text-[10px] text-gray-500">تحميل ملف</span>
+                <span className="text-[10px] text-[#8E757C]">تحميل ملف</span>
               </button>
 
-              <label className="w-full bg-gray-50 hover:bg-gray-100 text-gray-800 font-bold p-2.5 rounded-xl text-xs flex items-center justify-between transition border border-gray-200 cursor-pointer">
+              <label className="w-full bg-[#FFF8FA] hover:bg-[#FADDE4]/40 text-[#4A353B] font-bold p-2.5 rounded-xl text-xs flex items-center justify-between transition border border-[#F3DCE2] cursor-pointer">
                 <div className="flex items-center gap-2">
-                  <FileUp className="w-4 h-4 text-gray-600" />
+                  <FileUp className="w-4 h-4 text-[#C96D84]" />
                   <span>استعادة نسخة احتياطية (Import JSON)</span>
                 </div>
-                <span className="text-[10px] text-gray-500">رفع ملف</span>
+                <span className="text-[10px] text-[#8E757C]">رفع ملف</span>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -4739,18 +5226,18 @@ export default function App() {
             </div>
 
             {/* Safe Data Clear Options */}
-            <div className="space-y-2 pt-2 border-t border-gray-100">
-              <span className="text-xs font-bold text-gray-700 block">تنظيف ومسح البيانات:</span>
+            <div className="space-y-2 pt-2 border-t border-[#F3DCE2]">
+              <span className="text-xs font-bold text-[#4A353B] block">تنظيف ومسح البيانات:</span>
 
               <button
                 onClick={() => {
                   setIsSettingsModalOpen(false);
                   setIsClearShoppingConfirmOpen(true);
                 }}
-                className="w-full text-right bg-[#F7F0DE] hover:bg-[#EFE5C8] text-[#765B3A] font-bold p-2.5 rounded-xl text-xs flex items-center justify-between transition border border-[#E6D9B8]"
+                className="w-full text-right bg-[#FFF8FA] hover:bg-[#FADDE4]/40 text-[#4A353B] font-bold p-2.5 rounded-xl text-xs flex items-center justify-between transition border border-[#F3DCE2]"
               >
                 <span>إفراغ قائمة النواقص فقط</span>
-                <Trash2 className="w-4 h-4 text-amber-700" />
+                <Trash2 className="w-4 h-4 text-[#C96D84]" />
               </button>
 
               <button
@@ -4767,20 +5254,20 @@ export default function App() {
 
             {/* AdMob Diagnostics in Settings (Development Only) */}
             {IS_DEV && (
-              <div className="space-y-2 pt-2 border-t border-gray-100">
-                <span className="text-xs font-bold text-gray-700 block">إعلانات جوجل أد موب (Google AdMob):</span>
+              <div className="space-y-2 pt-2 border-t border-[#F3DCE2]">
+                <span className="text-xs font-bold text-[#4A353B] block">إعلانات جوجل أد موب (Google AdMob):</span>
                 <button
                   onClick={() => {
                     setIsSettingsModalOpen(false);
                     setIsAdControlsOpen(true);
                   }}
-                  className="w-full bg-[#F7F0DE] hover:bg-[#EFE5C8] text-amber-950 font-bold p-2.5 rounded-xl text-xs flex items-center justify-between transition border border-[#E6D9B8]"
+                  className="w-full bg-[#FFF8FA] hover:bg-[#FADDE4]/40 text-[#4A353B] font-bold p-2.5 rounded-xl text-xs flex items-center justify-between transition border border-[#F3DCE2]"
                 >
                   <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-600" />
+                    <Sparkles className="w-4 h-4 text-[#C96D84]" />
                     <span>لوحة ضبط ومحاكاة الإعلانات (وضع التطوير)</span>
                   </div>
-                  <span className="text-[10px] bg-amber-200/80 text-[#765B3A] px-2 py-0.5 rounded-md font-extrabold">
+                  <span className="text-[10px] bg-[#FADDE4] text-[#C96D84] px-2 py-0.5 rounded-md font-extrabold">
                     {adStatus === 'loaded' ? 'البانر نشط' : adStatus === 'loading' ? 'تحميل...' : adStatus === 'failed' ? 'منهار (أوفلاين)' : 'معطل'}
                   </span>
                 </button>
@@ -4794,41 +5281,41 @@ export default function App() {
       {/* -------- MODAL 5.5: CONFIRM RESTORE BACKUP ------------ */}
       {/* ======================================================== */}
       {isRestoreConfirmModalOpen && pendingRestoreData && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
-            <div className="flex items-center gap-2.5 text-amber-600 border-b border-gray-100 pb-3">
+        <div className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] space-y-4">
+            <div className="flex items-center gap-2.5 text-[#C96D84] border-b border-[#F3DCE2] pb-3">
               <AlertTriangle className="w-5 h-5 shrink-0" />
-              <h3 className="text-base font-extrabold text-gray-900">تأكيد استعادة النسخة الاحتياطية</h3>
+              <h3 className="text-base font-extrabold text-[#4A353B]">تأكيد استعادة النسخة الاحتياطية</h3>
             </div>
 
-            <div className="space-y-2 text-xs text-gray-600 leading-relaxed">
-              <p className="font-semibold text-gray-800">
+            <div className="space-y-2 text-xs text-[#8E757C] leading-relaxed">
+              <p className="font-semibold text-[#4A353B]">
                 هل تريد استبدال بيانات التطبيق الحالية بهذه النسخة؟
               </p>
-              <div className="bg-[#F7F0DE] text-[#765B3A] p-2.5 rounded-xl border border-[#E6D9B8] text-[11px] leading-relaxed">
+              <div className="bg-[#FADDE4]/50 text-[#4A353B] p-2.5 rounded-xl border border-[#F3DCE2] text-[11px] leading-relaxed">
                 ⚠️ تنبيه: سيتم استبدال الميزانية والمصاريف وقوائم النواقص الحالية بالبيانات المحفوظة في ملف النسخة الاحتياطية.
               </div>
 
-              <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 space-y-1.5 text-[11px]">
+              <div className="bg-[#FFF8FA] p-2.5 rounded-xl border border-[#F3DCE2] space-y-1.5 text-[11px]">
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500">حجم الأسرة:</span>
-                  <span className="font-bold text-[#626B49]">{pendingRestoreData.familySize} أفراد</span>
+                  <span className="text-[#8E757C]">حجم الأسرة:</span>
+                  <span className="font-bold text-[#C96D84]">{pendingRestoreData.familySize} أفراد</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500">مبلغ الميزانية:</span>
-                  <span className="font-bold text-[#626B49]">{pendingRestoreData.budgetAmount} ج.م</span>
+                  <span className="text-[#8E757C]">مبلغ الميزانية:</span>
+                  <span className="font-bold text-[#C96D84]">{pendingRestoreData.budgetAmount} ج.م</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500">عدد بنود النواقص:</span>
-                  <span className="font-bold text-gray-800">{pendingRestoreData.shoppingItems.length} طلب</span>
+                  <span className="text-[#8E757C]">عدد بنود النواقص:</span>
+                  <span className="font-bold text-[#4A353B]">{pendingRestoreData.shoppingItems.length} طلب</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500">عدد المصاريف المسجلة:</span>
-                  <span className="font-bold text-gray-800">{pendingRestoreData.expenses.length} مصروف</span>
+                  <span className="text-[#8E757C]">عدد المصاريف المسجلة:</span>
+                  <span className="font-bold text-[#4A353B]">{pendingRestoreData.expenses.length} مصروف</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-500">الوجبات المحفوظة:</span>
-                  <span className="font-bold text-gray-800">{pendingRestoreData.savedRecipeIds.length} وجبة</span>
+                  <span className="text-[#8E757C]">الوجبات المحفوظة:</span>
+                  <span className="font-bold text-[#4A353B]">{pendingRestoreData.savedRecipeIds.length} وجبة</span>
                 </div>
               </div>
             </div>
@@ -4839,13 +5326,13 @@ export default function App() {
                   setIsRestoreConfirmModalOpen(false);
                   setPendingRestoreData(null);
                 }}
-                className="flex-1 bg-gray-100 text-gray-700 font-bold py-2.5 rounded-xl text-xs hover:bg-gray-200 transition"
+                className="flex-1 bg-[#FADDE4] text-[#C96D84] font-bold py-2.5 rounded-xl text-xs hover:bg-[#E8A8B7]/50 transition"
               >
                 إلغاء
               </button>
               <button
                 onClick={handleConfirmRestore}
-                className="flex-1 bg-[#626B49] hover:bg-[#1E5631] text-white font-bold py-2.5 rounded-xl text-xs transition shadow-sm"
+                className="flex-1 bg-[#D47E93] hover:bg-[#C96D84] text-white font-bold py-2.5 rounded-xl text-xs transition shadow-sm"
               >
                 تأكيد الاستعادة
               </button>
@@ -4858,22 +5345,22 @@ export default function App() {
       {/* ---------------- MODAL 6: CLEAR SHOPPING CONFIRM ------- */}
       {/* ======================================================== */}
       {isClearShoppingConfirmOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-3">
-            <h3 className="text-base font-extrabold text-[#765B3A]">إفراغ قائمة النواقص؟</h3>
-            <p className="text-xs text-gray-600 leading-relaxed">
+        <div className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] space-y-3">
+            <h3 className="text-base font-extrabold text-[#4A353B]">إفراغ قائمة النواقص؟</h3>
+            <p className="text-xs text-[#8E757C] leading-relaxed">
               سيتم حذف جميع الأصناف المسجلة في قائمة النواقص حالياً. الوجبات وخطط الميزانية والمصاريف ستظل محفوظة ولن تتأثر.
             </p>
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setIsClearShoppingConfirmOpen(false)}
-                className="flex-1 bg-gray-100 text-gray-700 font-bold py-2 rounded-xl text-xs hover:bg-gray-200 transition"
+                className="flex-1 bg-[#FADDE4] text-[#C96D84] font-bold py-2 rounded-xl text-xs hover:bg-[#E8A8B7]/50 transition"
               >
                 إلغاء
               </button>
               <button
                 onClick={handleClearShoppingList}
-                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded-xl text-xs transition"
+                className="flex-1 bg-[#D47E93] hover:bg-[#C96D84] text-white font-bold py-2 rounded-xl text-xs transition"
               >
                 تأكيد الإفراغ
               </button>
@@ -4886,19 +5373,19 @@ export default function App() {
       {/* ---------------- MODAL 7: WIPE ALL DATA CONFIRM -------- */}
       {/* ======================================================== */}
       {isWipeModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-3">
+        <div className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] space-y-3">
             <div className="flex items-center gap-2 text-red-600">
               <AlertTriangle className="w-5 h-5 shrink-0" />
               <h3 className="text-base font-extrabold">مسح جميع بيانات التطبيق نهائياً؟</h3>
             </div>
-            <p className="text-xs text-gray-600 leading-relaxed">
+            <p className="text-xs text-[#8E757C] leading-relaxed">
               هذا الإجراء سيقوم بحذف جميع الوجبات المحفوظة، خطط الميزانية، سجل المصاريف، وتحديات الأيام وقوائم النواقص نهائياً من ذاكرة جهازك. لا يمكن التراجع عن هذا الإجراء إلا إذا كنت قد حمّلت نسخة احتياطية (JSON).
             </p>
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setIsWipeModalOpen(false)}
-                className="flex-1 bg-gray-100 text-gray-700 font-bold py-2 rounded-xl text-xs hover:bg-gray-200 transition"
+                className="flex-1 bg-[#FADDE4] text-[#C96D84] font-bold py-2 rounded-xl text-xs hover:bg-[#E8A8B7]/50 transition"
               >
                 إلغاء
               </button>
@@ -4917,14 +5404,14 @@ export default function App() {
       {/* ---------- MODAL 8: ADMOB SIMULATION CONTROLS (Development Only) ---------- */}
       {/* ======================================================== */}
       {IS_DEV && isAdControlsOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-              <div className="flex items-center gap-2 text-[#626B49]">
-                <Sparkles className="w-5 h-5 text-[#D8C69A]" />
+        <div className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] space-y-4">
+            <div className="flex items-center justify-between border-b border-[#F3DCE2] pb-2">
+              <div className="flex items-center gap-2 text-[#4A353B]">
+                <Sparkles className="w-5 h-5 text-[#C96D84]" />
                 <h3 className="text-base font-extrabold">لوحة تحكم إعلانات Google AdMob</h3>
               </div>
-              <button onClick={() => setIsAdControlsOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold">
+              <button onClick={() => setIsAdControlsOpen(false)} className="text-[#8E757C] hover:text-[#4A353B] font-bold">
                 ✕
               </button>
             </div>
@@ -4932,17 +5419,17 @@ export default function App() {
             {/* Banner Section */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-800 block">إعلان البانر (320x50 Banner):</span>
-                <span className="text-[10px] text-gray-400">حجز مساحة 50px • انهيار سلس</span>
+                <span className="text-xs font-bold text-[#4A353B] block">إعلان البانر (320x50 Banner):</span>
+                <span className="text-[10px] text-[#8E757C]">حجز مساحة 50px • انهيار سلس</span>
               </div>
-              <p className="text-[11px] text-gray-600 leading-relaxed">
+              <p className="text-[11px] text-[#8E757C] leading-relaxed">
                 يتم حجز مساحة ثابتة (50px) للبانر فوق شريط التنقل السفلي مباشرة لمنع اهتزاز الشاشة (CLS). في حال انقطاع الشبكة أو فشل التحميل، تنهار الحاوية تلقائياً لاسترجاع المساحة دون ترك فراغ ميت.
               </p>
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
                   onClick={() => { setAdStatus('loaded'); showToast('تم تفعيل البانر (Loaded) ✓'); }}
                   className={`p-2 rounded-xl text-center font-bold text-xs transition border ${
-                    adStatus === 'loaded' ? 'bg-[#626B49] text-white border-[#626B49]' : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                    adStatus === 'loaded' ? 'bg-[#D47E93] text-white border-[#D47E93]' : 'bg-[#FFF8FA] hover:bg-[#FADDE4]/40 text-[#4A353B] border-[#F3DCE2]'
                   }`}
                 >
                   🟢 محمّل (Loaded)
@@ -4950,7 +5437,7 @@ export default function App() {
                 <button
                   onClick={() => { setAdStatus('loading'); showToast('محاكاة التحميل وحجز المساحة ⏳'); }}
                   className={`p-2 rounded-xl text-center font-bold text-xs transition border ${
-                    adStatus === 'loading' ? 'bg-[#D97706] text-white border-[#D97706] animate-pulse' : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                    adStatus === 'loading' ? 'bg-[#E8A8B7] text-white border-[#E8A8B7] animate-pulse' : 'bg-[#FFF8FA] hover:bg-[#FADDE4]/40 text-[#4A353B] border-[#F3DCE2]'
                   }`}
                 >
                   ⏳ تحميل (Reserve Space)
@@ -4958,7 +5445,7 @@ export default function App() {
                 <button
                   onClick={() => { setAdStatus('failed'); showToast('محاكاة فشل التحميل وانهيار الحاوية 📉'); }}
                   className={`p-2 rounded-xl text-center font-bold text-xs transition border ${
-                    adStatus === 'failed' ? 'bg-rose-600 text-white border-rose-600' : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                    adStatus === 'failed' ? 'bg-red-600 text-white border-red-600' : 'bg-[#FFF8FA] hover:bg-[#FADDE4]/40 text-[#4A353B] border-[#F3DCE2]'
                   }`}
                 >
                   🔴 فشل (Collapse to 0)
@@ -4966,7 +5453,7 @@ export default function App() {
                 <button
                   onClick={() => { setAdStatus('disabled'); showToast('تم تعطيل البانر 🚫'); }}
                   className={`p-2 rounded-xl text-center font-bold text-xs transition border ${
-                    adStatus === 'disabled' ? 'bg-gray-800 text-white border-gray-800' : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200'
+                    adStatus === 'disabled' ? 'bg-[#4A353B] text-white border-[#4A353B]' : 'bg-[#FFF8FA] hover:bg-[#FADDE4]/40 text-[#4A353B] border-[#F3DCE2]'
                   }`}
                 >
                   ⚪ معطل (Hidden)
@@ -4975,9 +5462,9 @@ export default function App() {
             </div>
 
             {/* Interstitial Section */}
-            <div className="space-y-2 pt-2 border-t border-gray-100">
-              <span className="text-xs font-bold text-gray-800 block">الإعلانات البينية (Interstitial Ads Policy):</span>
-              <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 text-[11px] text-gray-600 space-y-1">
+            <div className="space-y-2 pt-2 border-t border-[#F3DCE2]">
+              <span className="text-xs font-bold text-[#4A353B] block">الإعلانات البينية (Interstitial Ads Policy):</span>
+              <div className="bg-[#FFF8FA] p-2.5 rounded-xl border border-[#F3DCE2] text-[11px] text-[#8E757C] space-y-1">
                 <div>• <b>معطلة افتراضياً:</b> لا تظهر إلا بتفعيل يدوي صريح.</div>
                 <div>• <b>تحديد التكرار:</b> حد أقصى مرتان في الجلسة ({sessionInterstitialCount}/2).</div>
                 <div>• <b>فترة راحة (Cooldown):</b> 120 ثانية بين كل إعلان والآخر.</div>
@@ -4993,14 +5480,14 @@ export default function App() {
                       setIsInterstitialEnabled(e.target.checked);
                       showToast(e.target.checked ? 'تم تفعيل الإعلانات البينية ⚡' : 'تم تعطيل الإعلانات البينية 🛡️');
                     }}
-                    className="w-4 h-4 text-[#626B49] rounded cursor-pointer"
+                    className="w-4 h-4 accent-[#D47E93] rounded cursor-pointer"
                   />
-                  <span className="text-xs font-bold text-gray-800">تفعيل الإعلانات البينية</span>
+                  <span className="text-xs font-bold text-[#4A353B]">تفعيل الإعلانات البينية</span>
                 </label>
 
                 <button
                   onClick={triggerTestInterstitial}
-                  className="bg-[#626B49] hover:bg-[#1E5631] text-white text-xs font-bold px-3 py-1.5 rounded-xl transition shadow-sm"
+                  className="bg-[#D47E93] hover:bg-[#C96D84] text-white text-xs font-bold px-3 py-1.5 rounded-xl transition shadow-sm"
                 >
                   اختبار العرض الآن 🎬
                 </button>
@@ -5010,7 +5497,7 @@ export default function App() {
             <div className="pt-2">
               <button
                 onClick={() => setIsAdControlsOpen(false)}
-                className="w-full bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#1E5631] transition"
+                className="w-full bg-[#D47E93] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#C96D84] transition"
               >
                 إغلاق اللوحة
               </button>
@@ -5023,19 +5510,19 @@ export default function App() {
       {/* ---------- MODAL 9: INTERSTITIAL AD SIMULATION (Development Only) --------- */}
       {/* ======================================================== */}
       {IS_DEV && isInterstitialActive && (
-        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl flex flex-col space-y-0 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-[#4A353B]/75 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border border-[#F3DCE2] flex flex-col space-y-0 animate-in fade-in zoom-in-95 duration-200">
             {/* Ad Top Bar */}
-            <div className="bg-gray-900 text-white px-4 py-2.5 flex items-center justify-between text-xs select-none">
+            <div className="bg-[#4A353B] text-white px-4 py-2.5 flex items-center justify-between text-xs select-none">
               <div className="flex items-center gap-2">
-                <span className="bg-yellow-400 text-gray-900 font-extrabold px-1.5 py-0.2 rounded text-[10px]">
+                <span className="bg-[#FADDE4] text-[#C96D84] font-extrabold px-1.5 py-0.2 rounded text-[10px]">
                   AdMob Test
                 </span>
-                <span className="text-[11px] text-gray-300">Google Mobile Ads • Interstitial</span>
+                <span className="text-[11px] text-[#FFF8FA]">Google Mobile Ads • Interstitial</span>
               </div>
               <button
                 onClick={handleDismissInterstitial}
-                className="w-6 h-6 rounded-full bg-gray-800 hover:bg-gray-700 text-white font-black flex items-center justify-center transition"
+                className="w-6 h-6 rounded-full bg-white/15 hover:bg-white/25 text-white font-black flex items-center justify-center transition"
                 title="إغلاق الإعلان"
               >
                 ✕
@@ -5043,28 +5530,28 @@ export default function App() {
             </div>
 
             {/* Ad Body Content */}
-            <div className="p-6 bg-gradient-to-b from-[#F1F5EC] to-white flex flex-col items-center text-center space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-[#626B49] text-[#D8C69A] font-black flex items-center justify-center text-2xl shadow-lg">
+            <div className="p-6 bg-gradient-to-b from-[#FFF8FA] to-white flex flex-col items-center text-center space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#E8A8B7] to-[#D47E93] text-white font-black flex items-center justify-center text-2xl shadow-lg">
                 تد
               </div>
 
               <div>
-                <span className="text-[10px] font-bold text-gray-400 block mb-1">
+                <span className="text-[10px] font-bold text-[#8E757C] block mb-1">
                   Unit: ca-app-pub-3940256099942544/1033173712
                 </span>
-                <h3 className="text-lg font-black text-[#626B49]">تدبيرة مصر – Tedbeera Egypt</h3>
-                <p className="text-xs text-gray-600 mt-1 max-w-[240px]">
+                <h3 className="text-lg font-black text-[#4A353B]">تدبيرة مصر – Tedbeera Egypt</h3>
+                <p className="text-xs text-[#8E757C] mt-1 max-w-[240px]">
                   تطبيق مصري ذكي لتوفير ميزانية الأسرة، أكلات التوفير، وبدائل المكونات بدون إنترنت!
                 </p>
               </div>
 
               {/* Policy Guard Verification Badge */}
-              <div className="w-full bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl text-right text-[11px] space-y-1 text-emerald-900">
+              <div className="w-full bg-[#FADDE4]/50 border border-[#F3DCE2] p-2.5 rounded-xl text-right text-[11px] space-y-1 text-[#4A353B]">
                 <div className="font-bold flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <Check className="w-3.5 h-3.5 text-[#C96D84]" />
                   <span>تم فحص معايير سياسة Google AdMob:</span>
                 </div>
-                <div className="text-[10px] text-gray-600">
+                <div className="text-[10px] text-[#8E757C]">
                   • ظهور عند انتقال طبيعي فقط (غير مفاجئ)<br />
                   • التكرار: {sessionInterstitialCount + 1} من 2 كحد أقصى للجلسة<br />
                   • تم تفعيل مؤقت راحة إلزامي 120 ثانية للإعلان القادم
@@ -5074,7 +5561,7 @@ export default function App() {
               <div className="w-full pt-2">
                 <button
                   onClick={handleDismissInterstitial}
-                  className="w-full bg-[#626B49] hover:bg-[#1E5631] text-white font-extrabold py-3 rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5"
+                  className="w-full bg-[#D47E93] hover:bg-[#C96D84] text-white font-extrabold py-3 rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5"
                 >
                   <span>استئناف واستخدام تدبيرة</span>
                   <ArrowRight className="w-4 h-4" />
@@ -5089,19 +5576,19 @@ export default function App() {
       {/* ---------- MODAL 10: REWARDED AD SIMULATION DIALOG ----- */}
       {/* ======================================================== */}
       {isRewardSimulationOpen && (
-        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl flex flex-col space-y-0 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-[#4A353B]/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border border-[#F3DCE2] flex flex-col space-y-0 animate-in fade-in zoom-in-95 duration-200">
             {/* Header */}
-            <div className="bg-[#626B49] text-white px-4 py-3 flex items-center justify-between select-none">
+            <div className="bg-gradient-to-br from-[#E8A8B7] to-[#D47E93] text-white px-4 py-3 flex items-center justify-between select-none">
               <div className="flex items-center gap-2">
-                <span className="bg-[#D8C69A] text-[#626B49] font-extrabold px-1.5 py-0.2 rounded text-[10px]">
+                <span className="bg-white/25 text-white font-extrabold px-1.5 py-0.2 rounded text-[10px]">
                   AdMob Test
                 </span>
                 <span className="text-xs font-bold">Google Mobile Ads • Rewarded Ad</span>
               </div>
               <button
                 onClick={handleCancelRewardSimulation}
-                className="w-6 h-6 rounded-full bg-[#4B5337]/90 hover:bg-[#3A412A] text-white font-black flex items-center justify-center transition text-xs"
+                className="w-6 h-6 rounded-full bg-white/20 hover:bg-white/30 text-white font-black flex items-center justify-center transition text-xs"
                 title="إلغاء الإعلان"
               >
                 ✕
@@ -5110,24 +5597,24 @@ export default function App() {
 
             {/* Body */}
             <div className="p-5 flex flex-col items-center text-center space-y-4">
-              <div className="w-14 h-14 rounded-2xl bg-[#EFE5C8] text-[#765B3A] flex items-center justify-center shadow-sm">
-                <CalendarCheck className="w-7 h-7 text-[#626B49]" />
+              <div className="w-14 h-14 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center shadow-sm">
+                <CalendarCheck className="w-7 h-7 text-[#C96D84]" />
               </div>
 
               <div>
-                <h3 className="text-base font-extrabold text-[#626B49]">فتح خطة الوجبات التوفيرية</h3>
-                <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                <h3 className="text-base font-extrabold text-[#4A353B]">فتح خطة الوجبات التوفيرية</h3>
+                <p className="text-xs text-[#8E757C] mt-1 leading-relaxed">
                   جرّب محاكاة الإعلان لفتح خطة وجبات الأسبوع الكاملة مع جدول التسوق المجمع.
                 </p>
               </div>
 
               {/* Simulation Environment Notice */}
-              <div className="w-full bg-[#F7F0DE] border border-[#E6D9B8] p-2.5 rounded-xl text-right text-[11px] space-y-1 text-amber-950">
+              <div className="w-full bg-[#FFF8FA] border border-[#F3DCE2] p-2.5 rounded-xl text-right text-[11px] space-y-1 text-[#4A353B]">
                 <div className="font-bold flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <Sparkles className="w-3.5 h-3.5 text-[#C96D84]" />
                   <span>محاكاة تجريبية مخصصة للمعاينة:</span>
                 </div>
-                <div className="text-[10px] text-gray-600 space-y-0.5">
+                <div className="text-[10px] text-[#8E757C] space-y-0.5">
                   <div>• <b>معرف الوحدة التجريبية:</b> {OFFICIAL_TEST_REWARDED_AD_UNIT}</div>
                   <div>• هذه محاكاة واجهة تجريبية وليست إعلاناً حقيقياً من Google.</div>
                   <div>• تمنح المكافأة فقط عند اكتمال المشاهدة بالكامل.</div>
@@ -5139,14 +5626,14 @@ export default function App() {
                 <div className="w-full space-y-2 pt-1">
                   <button
                     onClick={handleStartSimulationPlayback}
-                    className="w-full bg-[#626B49] hover:bg-[#1E5631] text-white font-extrabold py-3 rounded-xl text-xs transition shadow-md flex items-center justify-center gap-2"
+                    className="w-full bg-[#D47E93] hover:bg-[#C96D84] text-white font-extrabold py-3 rounded-xl text-xs transition shadow-md flex items-center justify-center gap-2"
                   >
                     <Play className="w-4 h-4 fill-white" />
                     <span>ابدأ المحاكاة (5 ثوانٍ)</span>
                   </button>
                   <button
                     onClick={handleCancelRewardSimulation}
-                    className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 rounded-xl text-xs transition"
+                    className="w-full bg-[#FADDE4] hover:bg-[#E8A8B7]/50 text-[#C96D84] font-bold py-2 rounded-xl text-xs transition"
                   >
                     إلغاء
                   </button>
@@ -5155,17 +5642,17 @@ export default function App() {
                 <div className="w-full space-y-3 pt-1">
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-[#626B49] flex items-center gap-1.5">
-                        <Tv className="w-3.5 h-3.5 animate-pulse text-[#D8C69A]" />
+                      <span className="font-bold text-[#4A353B] flex items-center gap-1.5">
+                        <Tv className="w-3.5 h-3.5 animate-pulse text-[#C96D84]" />
                         <span>جارِ محاكاة تشغيل الإعلان...</span>
                       </span>
-                      <span className="font-mono font-bold text-gray-700">{playbackCountdown} ثانية</span>
+                      <span className="font-mono font-bold text-[#C96D84]">{playbackCountdown} ثانية</span>
                     </div>
 
                     {/* Progress Bar */}
-                    <div className="w-full bg-gray-200 h-2.5 rounded-full overflow-hidden">
+                    <div className="w-full bg-[#FADDE4]/50 h-2.5 rounded-full overflow-hidden">
                       <div
-                        className="bg-[#626B49] h-full transition-all duration-1000 ease-linear rounded-full"
+                        className="bg-[#D47E93] h-full transition-all duration-1000 ease-linear rounded-full"
                         style={{ width: `${((5 - playbackCountdown) / 5) * 100}%` }}
                       />
                     </div>
@@ -5173,7 +5660,7 @@ export default function App() {
 
                   <button
                     onClick={handleCancelRewardSimulation}
-                    className="w-full text-xs text-rose-600 hover:text-rose-800 font-bold py-1.5 transition"
+                    className="w-full text-xs text-red-600 hover:text-red-800 font-bold py-1.5 transition"
                   >
                     تخطي وإلغاء (بدون مكافأة) ✕
                   </button>
@@ -5188,21 +5675,21 @@ export default function App() {
       {/* ------- MODAL 11: CONSOLIDATED WEEKLY SHOPPING PLAN ---- */}
       {/* ======================================================== */}
       {isConsolidatedShoppingModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-5 shadow-2xl max-h-[88vh] overflow-y-auto space-y-4">
-            <div className="flex items-start justify-between border-b border-gray-100 pb-2">
+        <div className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] max-h-[88vh] overflow-y-auto space-y-4">
+            <div className="flex items-start justify-between border-b border-[#F3DCE2] pb-2">
               <div>
-                <h3 className="text-base font-extrabold text-[#626B49] flex items-center gap-1.5">
-                  <CalendarCheck className="w-5 h-5 text-[#D8C69A]" />
+                <h3 className="text-base font-extrabold text-[#4A353B] flex items-center gap-1.5">
+                  <CalendarCheck className="w-5 h-5 text-[#C96D84]" />
                   <span>جدول التسوق المجمع لخطة الأسبوع</span>
                 </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-xs text-[#8E757C] mt-0.5">
                   مقادير مجمعة ومحسوبة لـ {familySize} أفراد لجميع أيام الأسبوع (السبت - الجمعة).
                 </p>
               </div>
               <button
                 onClick={() => setIsConsolidatedShoppingModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 font-bold p-1"
+                className="text-[#8E757C] hover:text-[#4A353B] font-bold p-1"
               >
                 ✕
               </button>
@@ -5215,35 +5702,35 @@ export default function App() {
 
               return (
                 <div className="space-y-3">
-                  <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl flex items-center justify-between">
+                  <div className="bg-[#FADDE4]/60 border border-[#F3DCE2] p-3 rounded-2xl flex items-center justify-between">
                     <div>
-                      <span className="text-xs font-bold text-emerald-900 block">إجمالي تقديري لمشتريات الأسبوع:</span>
-                      <span className="text-[10px] text-emerald-700">لكل وجبات الفطار والغداء والعشاء لـ {familySize} أفراد</span>
+                      <span className="text-xs font-bold text-[#4A353B] block">إجمالي تقديري لمشتريات الأسبوع:</span>
+                      <span className="text-[10px] text-[#8E757C]">لكل وجبات الفطار والغداء والعشاء لـ {familySize} أفراد</span>
                     </div>
-                    <span className="text-base font-extrabold text-emerald-800">
+                    <span className="text-base font-extrabold text-[#C96D84]">
                       ~{totalEst} ج.م
                     </span>
                   </div>
 
                   <div className="space-y-1.5">
-                    <span className="text-xs font-bold text-gray-800 block">الأصناف المجمعة ({consolidated.length} صنف):</span>
+                    <span className="text-xs font-bold text-[#4A353B] block">الأصناف المجمعة ({consolidated.length} صنف):</span>
                     <div className="space-y-1.5 max-h-60 overflow-y-auto">
                       {consolidated.map((item, idx) => (
                         <div
                           key={idx}
-                          className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 flex items-center justify-between text-xs"
+                          className="bg-[#FFF8FA] p-2.5 rounded-xl border border-[#F3DCE2] flex items-center justify-between text-xs"
                         >
                           <div>
-                            <span className="font-bold text-gray-900 block">{item.name}</span>
-                            <span className="text-[10px] text-gray-500">
+                            <span className="font-bold text-[#4A353B] block">{item.name}</span>
+                            <span className="text-[10px] text-[#8E757C]">
                               تُستخدم في {item.usedInMealsCount} وجبات طوال الأسبوع
                             </span>
                           </div>
                           <div className="text-left">
-                            <span className="font-bold text-[#626B49] block">
+                            <span className="font-bold text-[#C96D84] block">
                               {item.quantity} {item.unit}
                             </span>
-                            <span className="text-[10px] text-gray-500">
+                            <span className="text-[10px] text-[#8E757C]">
                               ~{item.totalEstimatedCost} ج.م
                             </span>
                           </div>
@@ -5255,13 +5742,13 @@ export default function App() {
                   <div className="pt-2 flex gap-2">
                     <button
                       onClick={() => setIsConsolidatedShoppingModalOpen(false)}
-                      className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 rounded-xl text-xs transition"
+                      className="flex-1 bg-[#FADDE4] hover:bg-[#E8A8B7]/50 text-[#C96D84] font-bold py-2.5 rounded-xl text-xs transition"
                     >
                       إغلاق
                     </button>
                     <button
                       onClick={handleAddConsolidatedPlanToShopping}
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1.5"
+                      className="flex-1 bg-[#D47E93] hover:bg-[#C96D84] text-white font-bold py-2.5 rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1.5"
                     >
                       <ShoppingCart className="w-3.5 h-3.5" />
                       <span>+ إضافة الأصناف لقائمة النواقص</span>
@@ -5279,27 +5766,27 @@ export default function App() {
       {/* ------- MODAL 12: ADD CUSTOM RECIPE (أضف أكلتك الخاصة) --- */}
       {/* ======================================================== */}
       {isAddCustomRecipeModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-3">
-            <h3 className="text-base font-extrabold text-[#626B49]">أضف أكلتك الخاصة 🍳</h3>
+        <div className="fixed inset-0 bg-[#4A353B]/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] space-y-3">
+            <h3 className="text-base font-extrabold text-[#4A353B]">أضف أكلتك الخاصة 🍳</h3>
             <div className="space-y-2.5 text-xs">
               <div>
-                <label className="block text-gray-700 font-bold mb-1">اسم الوجبة:</label>
+                <label className="block text-[#4A353B] font-bold mb-1">اسم الوجبة:</label>
                 <input
                   type="text"
                   value={customRecipeName}
                   onChange={(e) => setCustomRecipeName(e.target.value)}
                   placeholder="مثال: مسقعة باللحمة المفرومة"
-                  className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                  className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                 />
               </div>
 
               <div>
-                <label className="block text-gray-700 font-bold mb-1">التصنيف:</label>
+                <label className="block text-[#4A353B] font-bold mb-1">التصنيف:</label>
                 <select
                   value={customRecipeMealType}
                   onChange={(e) => setCustomRecipeMealType(e.target.value as any)}
-                  className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                  className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                 >
                   <option value="breakfast">فطار 🍳</option>
                   <option value="lunch">غداء 🍲</option>
@@ -5309,33 +5796,33 @@ export default function App() {
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-gray-700 font-bold mb-1">الوقت (بالدقائق):</label>
+                  <label className="block text-[#4A353B] font-bold mb-1">الوقت (بالدقائق):</label>
                   <input
                     type="number"
                     value={customRecipePrepTime}
                     onChange={(e) => setCustomRecipePrepTime(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                    className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                   />
                 </div>
                 <div>
-                  <label className="block text-gray-700 font-bold mb-1">التكلفة (ج.م):</label>
+                  <label className="block text-[#4A353B] font-bold mb-1">التكلفة (ج.م):</label>
                   <input
                     type="number"
                     value={customRecipeCost}
                     onChange={(e) => setCustomRecipeCost(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                    className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-gray-700 font-bold mb-1">المكون الأساسي:</label>
+                <label className="block text-[#4A353B] font-bold mb-1">المكون الأساسي:</label>
                 <input
                   type="text"
                   value={customRecipeIngredientName}
                   onChange={(e) => setCustomRecipeIngredientName(e.target.value)}
                   placeholder="مثال: باذنجان، لحمة مفرومة، طماطم"
-                  className="w-full border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:border-[#626B49]"
+                  className="w-full border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] rounded-xl p-2.5 focus:outline-none focus:border-[#D47E93]"
                 />
               </div>
             </div>
@@ -5343,13 +5830,13 @@ export default function App() {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setIsAddCustomRecipeModalOpen(false)}
-                className="flex-1 bg-gray-100 text-gray-700 font-bold py-2 rounded-xl text-xs hover:bg-gray-200 transition"
+                className="flex-1 bg-[#FADDE4] text-[#C96D84] font-bold py-2 rounded-xl text-xs hover:bg-[#E8A8B7]/50 transition"
               >
                 إلغاء
               </button>
               <button
                 onClick={handleSaveCustomRecipe}
-                className="flex-1 bg-[#626B49] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#1E5631] transition"
+                className="flex-1 bg-[#D47E93] text-white font-bold py-2 rounded-xl text-xs hover:bg-[#C96D84] transition"
               >
                 حفظ وإضافة
               </button>

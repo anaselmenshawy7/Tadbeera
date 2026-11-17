@@ -15,15 +15,17 @@ export default defineConfig(() => {
         includeAssets: [
           'favicon.png',
           'apple-touch-icon.png',
-          'assets/aistudio/*.png'
+          'icon-192.png',
+          'icon-512.png',
+          'icon-maskable-512.png'
         ],
         manifest: {
           id: '/',
           name: 'تدبيرة — كل جنيه ليه قيمة',
           short_name: 'تدبيرة',
           description: 'تدبيرة — تطبيق أندرويد مصري أصيل لتدبير ميزانية البيت والأكل والمصاريف. وفّر بذكاء، ودبّر بيتك، وخلي كل جنيه في مكانه.',
-          theme_color: '#1E5631',
-          background_color: '#F8F3E9',
+          theme_color: '#D47E93',
+          background_color: '#FFF8FA',
           display: 'standalone',
           start_url: '/',
           scope: '/',
@@ -31,40 +33,28 @@ export default defineConfig(() => {
           dir: 'rtl',
           icons: [
             {
-              src: '/assets/aistudio/launchericon-48x48_08576b00.png',
-              sizes: '48x48',
+              src: '/favicon.png',
+              sizes: '64x64',
               type: 'image/png',
               purpose: 'any'
             },
             {
-              src: '/assets/aistudio/launchericon-72x72_e4abd8ef.png',
-              sizes: '72x72',
-              type: 'image/png',
-              purpose: 'any'
-            },
-            {
-              src: '/assets/aistudio/launchericon-96x96_4d503cd4.png',
-              sizes: '96x96',
-              type: 'image/png',
-              purpose: 'any'
-            },
-            {
-              src: '/assets/aistudio/launchericon-144x144_b3711091.png',
-              sizes: '144x144',
-              type: 'image/png',
-              purpose: 'any'
-            },
-            {
-              src: '/assets/aistudio/launchericon-192x192_a1111b2e.png',
+              src: '/icon-192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any'
             },
             {
-              src: '/assets/aistudio/launchericon-512x512_fdb81f54.png',
+              src: '/icon-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any'
+            },
+            {
+              src: '/icon-maskable-512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ]
         },

@@ -539,27 +539,27 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
       }}
       className="fixed inset-0 z-[70] flex items-end justify-center bg-black/55 backdrop-blur-[2px] sm:items-center sm:p-4"
     >
-      <div className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#E4DECF] bg-[#FBF8F1] shadow-2xl sm:rounded-3xl">
+      <div className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#F3DCE2] bg-[#FFF8FA] shadow-2xl sm:rounded-3xl">
         {/* Mobile bottom-sheet grab handle */}
-        <div className="mx-auto mt-2.5 h-1.5 w-10 shrink-0 rounded-full bg-[#D8D0C0] sm:hidden" aria-hidden="true" />
+        <div className="mx-auto mt-2.5 h-1.5 w-10 shrink-0 rounded-full bg-[#E8A8B7] sm:hidden" aria-hidden="true" />
 
         {/* Sticky Modal Header */}
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#E6DFCE] bg-[#FBF8F1] px-4 py-3">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#F3DCE2] bg-[#FFFFFF] px-4 py-3">
           <div className="min-w-0">
             <div className="mb-1 flex items-center gap-2">
               <span className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${CUISINE_BADGE_META[selected.cuisine].className}`}>
                 {CUISINE_BADGE_META[selected.cuisine].label}
               </span>
             </div>
-            <h4 id="recipe-detail-modal-title" className="text-base font-black leading-snug text-[#1E5631]">
+            <h4 id="recipe-detail-modal-title" className="text-base font-black leading-snug text-[#4A353B]">
               {selected.title}
             </h4>
-            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-[#5C6650] tabular-nums">
+            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-[#8E757C] tabular-nums">
               <span>
                 متوفر {selected.matched} من {selected.total} مكوّن
               </span>
               <span aria-hidden="true">·</span>
-              <span className="font-bold text-[#2E7D32]">{getMatchPercent(selected)}% تطابق</span>
+              <span className="font-bold text-[#C96D84]">{getMatchPercent(selected)}% تطابق</span>
               <span aria-hidden="true">·</span>
               <span>لـ {familySize} أفراد</span>
             </p>
@@ -568,7 +568,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
             type="button"
             onClick={() => setSelected(null)}
             aria-label="إغلاق"
-            className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-[#E4DECF] bg-white text-[#43523D] transition hover:bg-[#F1EDE2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
+            className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] transition hover:bg-[#FADDE4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
           >
             <X className="h-5 w-5" />
           </button>
@@ -577,7 +577,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
         {/* Scrollable Details Body */}
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
           {selected.image && !modalImageBroken ? (
-            <div className="overflow-hidden rounded-2xl border border-[#E4DECF] bg-[#EFE9DA]">
+            <div className="overflow-hidden rounded-2xl border border-[#F3DCE2] bg-[#FADDE4]/35">
               <img
                 src={selected.image}
                 alt={selected.title}
@@ -587,7 +587,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
               />
             </div>
           ) : (
-            <div className="flex h-44 w-full items-center justify-center rounded-2xl border border-[#E4DECF] bg-[#F3EBDD] p-3">
+            <div className="flex h-44 w-full items-center justify-center rounded-2xl border border-[#F3DCE2] bg-[#FADDE4]/35 p-3">
               <RecipeIllustration recipeId={selected.id} recipeName={selected.title} className="h-36 w-36" />
             </div>
           )}
@@ -596,24 +596,24 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
           {selected.ingredientBreakdown.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <h5 className="text-xs font-black text-[#1E5631]">
+                <h5 className="text-xs font-black text-[#4A353B]">
                   {selected.isLocal ? `المكونات الأساسية (تناسب ${familySize} أفراد)` : `المكونات المضبوطة لـ ${familySize} أفراد`}
                 </h5>
-                <span className="text-[11px] font-semibold text-[#68745F] tabular-nums">
+                <span className="text-[11px] font-semibold text-[#8E757C] tabular-nums">
                   {selectedAvailableIngredients.length} متوفر · {selectedMissingIngredients.length} ناقص
                 </span>
               </div>
 
               {selectedAvailableIngredients.length > 0 && (
-                <div className="rounded-2xl border border-[#CBE0CC] bg-[#EEF6EE] p-3">
-                  <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-[#1E5631]">
+                <div className="rounded-2xl border border-[#F3DCE2] bg-[#FADDE4]/55 p-3">
+                  <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-[#C96D84]">
                     <Check className="h-4 w-4 shrink-0" />
                     <span>مكونات متوفرة عندك ({selectedAvailableIngredients.length})</span>
                   </div>
-                  <ul className="space-y-1.5 text-xs text-[#1E4628]">
+                  <ul className="space-y-1.5 text-xs text-[#4A353B]">
                     {selectedAvailableIngredients.map((ing, index) => (
                       <li key={index} className="flex items-start gap-2 leading-5">
-                        <span className="mt-0.5 font-bold text-[#2E7D32]" aria-hidden="true">✓</span>
+                        <span className="mt-0.5 font-bold text-[#C96D84]" aria-hidden="true">✓</span>
                         <span className="font-semibold">{scaleMeasure(ing.text, familySize)}</span>
                       </li>
                     ))}
@@ -622,22 +622,22 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
               )}
 
               {selectedMissingIngredients.length > 0 ? (
-                <div className="rounded-2xl border border-[#E6D9B8] bg-[#F7F0DE] p-3">
-                  <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-[#765B3A]">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
+                <div className="rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3">
+                  <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-[#8E757C]">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-[#C96D84]" />
                     <span>مكونات ناقصة (تحتاجها الوصفة) ({selectedMissingIngredients.length})</span>
                   </div>
-                  <ul className="space-y-1.5 text-xs text-[#5E482D]">
+                  <ul className="space-y-1.5 text-xs text-[#4A353B]">
                     {selectedMissingIngredients.map((ing, index) => (
                       <li key={index} className="flex items-start gap-2 leading-5">
-                        <span className="mt-0.5 font-bold text-[#9A6B2F]" aria-hidden="true">•</span>
+                        <span className="mt-0.5 font-bold text-[#D47E93]" aria-hidden="true">•</span>
                         <span className="font-medium">{scaleMeasure(ing.text, familySize)}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 rounded-2xl border border-[#CBE0CC] bg-[#EEF6EE] p-3 text-xs font-bold text-[#1E5631]">
+                <div className="flex items-center gap-2 rounded-2xl border border-[#F3DCE2] bg-[#FADDE4]/55 p-3 text-xs font-bold text-[#C96D84]">
                   <Check className="h-4 w-4 shrink-0" />
                   <span>كل مكونات الوصفة متوفرة عندك — جاهزة للتحضير فوراً</span>
                 </div>
@@ -646,9 +646,9 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
           )}
 
           {/* Preparation Steps */}
-          <div className="space-y-2 rounded-2xl border border-[#E4DECF] bg-white p-3.5">
-            <h5 className="text-xs font-black text-[#1E5631]">طريقة التحضير</h5>
-            <p className="whitespace-pre-wrap text-sm leading-7 text-gray-800">{selected.instructions}</p>
+          <div className="space-y-2 rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3.5">
+            <h5 className="text-xs font-black text-[#4A353B]">طريقة التحضير</h5>
+            <p className="whitespace-pre-wrap text-sm leading-7 text-[#4A353B]">{selected.instructions}</p>
           </div>
 
           {!selected.isLocal && (
@@ -657,7 +657,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
                 href={selected.url}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex min-h-[40px] items-center gap-1.5 text-xs font-bold text-[#1E5631] underline underline-offset-4 hover:text-[#2E7D32]"
+                className="inline-flex min-h-[40px] items-center gap-1.5 text-xs font-bold text-[#C96D84] underline underline-offset-4 hover:text-[#4A353B]"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
                 <span>المصدر الأصلي للوصفة</span>
@@ -667,11 +667,11 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
         </div>
 
         {/* Sticky Modal Footer */}
-        <div className="shrink-0 border-t border-[#E6DFCE] bg-[#FBF8F1] px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        <div className="shrink-0 border-t border-[#F3DCE2] bg-[#FFFFFF] px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <button
             type="button"
             onClick={() => setSelected(null)}
-            className="flex min-h-[44px] w-full items-center justify-center rounded-xl bg-[#1E5631] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#2E7D32] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
+            className="flex min-h-[44px] w-full items-center justify-center rounded-xl bg-[#D47E93] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#C96D84] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
           >
             إغلاق
           </button>
@@ -681,10 +681,10 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
   ) : null;
 
   return (
-    <section dir="rtl" className="mt-3 space-y-3 rounded-2xl border border-[#DFD7C5] bg-[#FBF8F1] p-3.5">
+    <section dir="rtl" className="mt-3 space-y-3 rounded-2xl border border-[#F3DCE2] bg-[#FFF8FA] p-3.5">
       <div>
-        <h3 className="text-sm font-black text-[#1E5631]">🍲 اطبخ بالموجود عندك</h3>
-        <p className="mt-1 text-[11px] leading-5 text-[#665F52]">
+        <h3 className="text-sm font-black text-[#4A353B]">🍲 اطبخ بالموجود عندك</h3>
+        <p className="mt-1 text-[11px] leading-5 text-[#8E757C]">
           ابحث بالمكونات المتوفرة، والوصفات المصرية والعربية بتظهر فوراً مع مقادير مضبوطة لـ {familySize} أفراد.
         </p>
       </div>
@@ -693,10 +693,10 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
         <button
           type="button"
           onClick={() => setCuisine('all')}
-          className={`min-h-[40px] whitespace-nowrap shrink-0 rounded-xl px-3.5 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631] ${
+          className={`min-h-[40px] whitespace-nowrap shrink-0 rounded-xl px-3.5 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93] ${
             cuisine === 'all'
-              ? 'bg-[#1E5631] text-white shadow-xs'
-              : 'border border-[#DDD5C3] bg-white text-[#43523D] hover:bg-[#F5F0E5]'
+              ? 'bg-[#D47E93] text-white shadow-xs'
+              : 'border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] hover:bg-[#FADDE4]/50'
           }`}
         >
           كل المطابخ
@@ -704,10 +704,10 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
         <button
           type="button"
           onClick={() => setCuisine('egyptian')}
-          className={`min-h-[40px] whitespace-nowrap shrink-0 rounded-xl px-3.5 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631] ${
+          className={`min-h-[40px] whitespace-nowrap shrink-0 rounded-xl px-3.5 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93] ${
             cuisine === 'egyptian'
-              ? 'bg-[#1E5631] text-white shadow-xs'
-              : 'border border-[#DDD5C3] bg-white text-[#43523D] hover:bg-[#F5F0E5]'
+              ? 'bg-[#D47E93] text-white shadow-xs'
+              : 'border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] hover:bg-[#FADDE4]/50'
           }`}
         >
           أكلات مصرية
@@ -716,18 +716,18 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
           type="button"
           disabled={!availableIngredients.length || loading}
           onClick={search}
-          className="min-h-[40px] whitespace-nowrap shrink-0 rounded-xl bg-[#2E7D32] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#1E5631] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
+          className="min-h-[40px] whitespace-nowrap shrink-0 rounded-xl bg-[#D47E93] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#C96D84] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
         >
           {loading ? 'بنكمّل البحث أونلاين…' : 'دور بالمكونات دي'}
         </button>
       </div>
 
-      <p className="text-[11px] text-[#6E675A]">
+      <p className="text-[11px] text-[#8E757C]">
         المكونات المختارة: {availableIngredients.join('، ') || 'اختار مكونات البيت أولاً'}
       </p>
 
       {error && (
-        <p role="status" className="rounded-xl border border-[#E6D9B8] bg-[#F7F0DE] p-2.5 text-xs font-medium text-[#6B502F]">
+        <p role="status" className="rounded-xl border border-[#F3DCE2] bg-[#FADDE4]/50 p-2.5 text-xs font-medium text-[#4A353B]">
           {error}
         </p>
       )}
@@ -735,12 +735,12 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
       {cuisineFilteredResults.length > 0 && (
         <div className="space-y-2.5 pt-1">
           {/* Smart Filter Header Bar above Results */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E6DFCE] pb-2">
-            <div className="text-xs font-bold text-[#43523D] tabular-nums">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#F3DCE2] pb-2">
+            <div className="text-xs font-bold text-[#4A353B] tabular-nums">
               {showAllRecipes
                 ? `كل الوصفات (${cuisineFilteredResults.length})`
                 : `الوصفات المناسبة لمكوناتك (${matchedCount})`}
-              {loading && <span className="mr-2 text-[10px] font-medium text-[#2E7D32]">· جاري إضافة نتائج أونلاين…</span>}
+              {loading && <span className="mr-2 text-[10px] font-medium text-[#C96D84]">· جاري إضافة نتائج أونلاين…</span>}
             </div>
 
             {zeroMatchCount > 0 && (
@@ -748,10 +748,10 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
                 type="button"
                 aria-pressed={showAllRecipes}
                 onClick={() => setShowAllRecipes((prev) => !prev)}
-                className={`inline-flex min-h-[36px] whitespace-nowrap shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631] ${
+                className={`inline-flex min-h-[36px] whitespace-nowrap shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93] ${
                   showAllRecipes
-                    ? 'border-[#1E5631] bg-[#1E5631] text-white'
-                    : 'border-[#D5CCB8] bg-white text-[#1E5631] hover:bg-[#F3EDE0]'
+                    ? 'border-[#D47E93] bg-[#D47E93] text-white'
+                    : 'border-[#F3DCE2] bg-[#FFFFFF] text-[#C96D84] hover:bg-[#FADDE4]/50'
                 }`}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
@@ -773,11 +773,11 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
                     type="button"
                     key={item.id}
                     onClick={() => setSelected(item)}
-                    className={`flex w-full items-center justify-between gap-3 rounded-xl border bg-white p-2.5 text-right transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631] ${
-                      isSelected ? 'border-[#1E5631] ring-1 ring-[#1E5631]/30' : 'border-[#E6DFCE] hover:border-[#2E7D32]/60'
+                    className={`flex w-full items-center justify-between gap-3 rounded-xl border bg-[#FFFFFF] p-2.5 text-right transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93] ${
+                      isSelected ? 'border-[#D47E93] ring-1 ring-[#D47E93]/30' : 'border-[#F3DCE2] hover:border-[#D47E93]'
                     }`}
                   >
-                    <span className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-[#F3EBDD]">
+                    <span className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-[#FADDE4]/40">
                       {item.image ? (
                         <img
                           src={item.image}
@@ -792,23 +792,23 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
-                        <span className="min-w-0 flex-1 truncate text-xs font-extrabold text-gray-900">{item.title}</span>
+                        <span className="min-w-0 flex-1 truncate text-xs font-extrabold text-[#4A353B]">{item.title}</span>
                         <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold whitespace-nowrap ${badge.className}`}>
                           {badge.label}
                         </span>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] tabular-nums">
-                        <span className={item.matched > 0 ? 'font-bold text-[#1E5631]' : 'font-medium text-[#7B7364]'}>
+                        <span className={item.matched > 0 ? 'font-bold text-[#C96D84]' : 'font-medium text-[#8E757C]'}>
                           متوفر {item.matched} من {item.total} مكوّن
                         </span>
-                        <span className="text-gray-300" aria-hidden="true">·</span>
-                        <span className={item.matched > 0 ? 'font-bold text-[#2E7D32]' : 'text-[#8C8373]'}>
+                        <span className="text-[#F3DCE2]" aria-hidden="true">·</span>
+                        <span className={item.matched > 0 ? 'font-bold text-[#C96D84]' : 'text-[#8E757C]'}>
                           {percent}% تطابق
                         </span>
                       </div>
                     </div>
 
-                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-[#1E5631]">
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-[#C96D84]">
                       <Eye className="h-3.5 w-3.5" />
                       <span>التفاصيل</span>
                     </span>
@@ -817,15 +817,15 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
               })}
             </div>
           ) : (
-            <div className="space-y-2.5 rounded-xl border border-dashed border-[#D8CFBC] bg-white p-4 text-center">
-              <p className="text-xs font-semibold text-[#5C5548]">
+            <div className="space-y-2.5 rounded-xl border border-dashed border-[#F3DCE2] bg-[#FFFFFF] p-4 text-center">
+              <p className="text-xs font-semibold text-[#4A353B]">
                 مفيش وصفات مطابقة للمكونات المختارة حالياً.
               </p>
               {zeroMatchCount > 0 && (
                 <button
                   type="button"
                   onClick={() => setShowAllRecipes(true)}
-                  className="inline-flex min-h-[40px] items-center justify-center rounded-xl bg-[#1E5631] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#2E7D32]"
+                  className="inline-flex min-h-[40px] items-center justify-center rounded-xl bg-[#D47E93] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#C96D84]"
                 >
                   إظهار كل الوصفات ({cuisineFilteredResults.length})
                 </button>

@@ -4,45 +4,48 @@ import type { ShoppingItem, ShoppingTotals } from '../../data/calculationUtils';
 interface ShoppingTotalsSummaryProps {
   totals: ShoppingTotals;
   items: ShoppingItem[];
+  isFetchingPrices?: boolean;
 }
 
 /** Displays priced and pending shopping totals without owning or mutating app state. */
-export function ShoppingTotalsSummary({ totals, items }: ShoppingTotalsSummaryProps) {
+export function ShoppingTotalsSummary({ totals, items, isFetchingPrices }: ShoppingTotalsSummaryProps) {
   return (
     <>
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-2">
         <div>
-          <span className="text-[11px] text-gray-400 block">
-            {totals.isFullyPriced ? 'إجمالي النواقص التقديري:' : 'مجموع تقديري جزئي (للأصناف المسعرة):'}
+          <span className="text-[11px] text-[#8E757C] block">
+            {totals.isFullyPriced ? 'إجمالي النواقص التقديري:' : 'مجموع الأصناف المسعرة حتى الآن:'}
           </span>
-          <div className="flex items-baseline gap-2">
-            <span className="text-xl font-black text-[#1E5631]">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="text-xl font-black text-[#C96D84]">
               {totals.knownTotal} جنيه مصري
             </span>
             {!totals.isFullyPriced && (
-              <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-md border border-amber-200">
-                ⚠️ {totals.unpricedCount} بدون تسعير
+              <span className="bg-[#FADDE4] text-[#C96D84] text-[10px] font-bold px-2 py-0.5 rounded-md border border-[#F3DCE2]">
+                {isFetchingPrices
+                  ? 'جاري التحقق من الأسعار...'
+                  : `${totals.unpricedCount} أصناف تنتظر السعر`}
               </span>
             )}
           </div>
           {!totals.isFullyPriced && (
-            <p className="text-[10px] text-amber-700 mt-0.5">
-              * المجموع النهائي غير مكتمل حتى تحديد أسعار الأصناف المتبقية.
+            <p className="text-[10px] text-[#8E757C] mt-0.5">
+              * سيتم استكمال الإجمالي فور جلب أسعار السوق الحقيقية أو إدخال السعر يدوياً.
             </p>
           )}
         </div>
 
-        <div className="text-left">
-          <span className="text-[10px] text-gray-400 block">المتبقي للشراء:</span>
-          <span className="text-sm font-bold text-amber-700">
+        <div className="text-left shrink-0">
+          <span className="text-[10px] text-[#8E757C] block">المتبقي للشراء:</span>
+          <span className="text-sm font-bold text-[#C96D84]">
             {totals.pendingKnownTotal} ج.م
           </span>
         </div>
       </div>
 
       {items.length > 0 && items.every(item => item.isChecked) && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-sm animate-pulse">
-          <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="bg-[#FADDE4]/70 border border-[#E8A8B7] text-[#4A353B] p-3 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-sm animate-pulse">
+          <Sparkles className="w-4 h-4 text-[#C96D84] shrink-0" />
           <span>🎉 شطبت كل طلباتك ووفرت صح!</span>
         </div>
       )}

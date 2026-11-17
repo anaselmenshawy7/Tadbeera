@@ -32,17 +32,17 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       return (
         <div
           dir="rtl"
-          className="m-3 rounded-2xl border border-[#E4DECF] bg-[#FFFDF8] p-5 text-center shadow-sm space-y-3"
+          className="m-3 rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-5 text-center shadow-sm space-y-3"
           role="alert"
         >
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EFE7D4] text-[#796648]">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FADDE4] text-[#C96D84]">
             <AlertTriangle className="h-6 w-6" />
           </div>
           <div className="space-y-1">
-            <h2 className="text-sm font-black text-[#1E5631]">
+            <h2 className="text-sm font-black text-[#4A353B]">
               {this.props.fallbackTitle || 'حصل خطأ غير متوقع في عرض الشاشة'}
             </h2>
-            <p className="text-xs leading-5 text-[#68745F]">
+            <p className="text-xs leading-5 text-[#8E757C]">
               بياناتك محفوظة بأمان على جهازك. تقدر تعيد المحاولة دلوقتي أو تحدث الصفحة.
             </p>
           </div>
@@ -50,7 +50,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             <button
               type="button"
               onClick={this.handleRetry}
-              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl bg-[#626B49] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#1E5631]"
+              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-xl bg-[#D47E93] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#C96D84]"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               <span>إعادة المحاولة</span>
@@ -58,7 +58,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="inline-flex min-h-[40px] items-center rounded-xl border border-[#D8DDCB] bg-white px-4 py-2 text-xs font-bold text-[#626B49] transition hover:bg-[#F1F5EC]"
+              className="inline-flex min-h-[40px] items-center rounded-xl border border-[#F3DCE2] bg-[#FFF8FA] px-4 py-2 text-xs font-bold text-[#C96D84] transition hover:bg-[#FADDE4]"
             >
               تحديث التطبيق
             </button>

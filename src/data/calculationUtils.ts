@@ -5,8 +5,11 @@ export interface ShoppingItem {
   name: string;
   quantity: number;
   unit: string;
-  unitPrice: number | null; // null represents unpriced item ("السعر غير محدد")
+  unitPrice: number | null; // null represents unpriced item awaiting real market or user price
   isChecked: boolean;
+  priceSource?: 'live_market' | 'user_verified' | null;
+  priceUpdatedAt?: string | null;
+  priceSourceLabel?: string | null;
 }
 
 export interface ShoppingTotals {
@@ -226,6 +229,18 @@ export function normalizeShoppingItem(raw: any): ShoppingItem {
   }
 
   const isChecked = Boolean(raw.isChecked);
+  const priceSource =
+    raw.priceSource === 'live_market' || raw.priceSource === 'user_verified'
+      ? raw.priceSource
+      : null;
+  const priceUpdatedAt =
+    typeof raw.priceUpdatedAt === 'string' && raw.priceUpdatedAt.trim()
+      ? raw.priceUpdatedAt.trim()
+      : null;
+  const priceSourceLabel =
+    typeof raw.priceSourceLabel === 'string' && raw.priceSourceLabel.trim()
+      ? raw.priceSourceLabel.trim()
+      : null;
 
   return {
     id,
@@ -233,7 +248,10 @@ export function normalizeShoppingItem(raw: any): ShoppingItem {
     quantity,
     unit,
     unitPrice,
-    isChecked
+    isChecked,
+    ...(priceSource ? { priceSource } : {}),
+    ...(priceUpdatedAt ? { priceUpdatedAt } : {}),
+    ...(priceSourceLabel ? { priceSourceLabel } : {}),
   };
 }
 

@@ -334,34 +334,34 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
 
   return (
     <div className="space-y-4" dir="rtl">
-      <div className="rounded-2xl border border-[#DCE5D3] bg-[#F1F5EC] p-3.5">
-        <h3 className="font-extrabold text-sm text-[#1E5631]">البيت والمواعيد 🏠</h3>
-        <p className="mt-1 text-[11px] text-[#5C6650]">
+      <div className="rounded-2xl border border-[#F3DCE2] bg-[#FADDE4]/55 p-3.5">
+        <h3 className="font-extrabold text-sm text-[#4A353B]">البيت والمواعيد 🏠</h3>
+        <p className="mt-1 text-[11px] text-[#8E757C]">
           تنبيهاتك الخاصة، مهام البيت اليومية، وأهداف التحويش — كلها محفوظة على موبايلك وتنبهك في ميعادها.
         </p>
       </div>
 
       {/* 1. Custom Smart Reminders (التنبيهات والتذكيرات الخاصة) */}
-      <section className="rounded-2xl border border-[#E4DECF] bg-white p-3.5 space-y-3 shadow-xs">
+      <section className="rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3.5 space-y-3 shadow-xs">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-xl bg-[#EEF6EE] text-[#1E5631] flex items-center justify-center shrink-0">
+            <span className="w-8 h-8 rounded-xl bg-[#FADDE4] text-[#C96D84] flex items-center justify-center shrink-0">
               <Bell className="w-4 h-4" />
             </span>
             <div>
-              <h4 className="font-extrabold text-sm text-[#1E5631]">التنبيهات والتذكيرات الخاصة</h4>
-              <p className="text-[11px] text-gray-500">إضافة تنبيه جديد بميعاده وإشعار أوتوماتيك قبله</p>
+              <h4 className="font-extrabold text-sm text-[#4A353B]">التنبيهات والتذكيرات الخاصة</h4>
+              <p className="text-[11px] text-[#8E757C]">إضافة تنبيه جديد بميعاده وإشعار أوتوماتيك قبله</p>
             </div>
           </div>
-          <span className="text-[11px] font-bold text-[#1E5631] bg-[#EEF6EE] px-2 py-0.5 rounded-lg">
+          <span className="text-[11px] font-bold text-[#C96D84] bg-[#FADDE4] px-2 py-0.5 rounded-lg">
             {reminders.filter(r => r.enabled).length} شغّال
           </span>
         </div>
 
         {/* Title Suggestions */}
         <div className="space-y-1.5">
-          <span className="text-[11px] font-bold text-[#5C6650] flex items-center gap-1">
-            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+          <span className="text-[11px] font-bold text-[#8E757C] flex items-center gap-1">
+            <Sparkles className="w-3.5 h-3.5 text-[#C96D84]" />
             اختيارات سريعة:
           </span>
           <div className="flex flex-wrap gap-1.5">
@@ -377,8 +377,8 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
                 }}
                 className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition ${
                   remTitle === suggestion
-                    ? 'bg-[#1E5631] text-white border-[#1E5631]'
-                    : 'bg-[#F8F5ED] text-[#4B553F] border-[#E4DECF] hover:border-[#1E5631]'
+                    ? 'bg-[#D47E93] text-white border-[#D47E93]'
+                    : 'bg-[#FFF8FA] text-[#4A353B] border-[#F3DCE2] hover:border-[#D47E93]'
                 }`}
               >
                 {suggestion}
@@ -388,45 +388,45 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
         </div>
 
         {/* Add New Reminder Form */}
-        <div className="rounded-xl border border-[#EFE9DA] bg-[#FCFBF7] p-3 space-y-2.5">
-          <div className="text-xs font-extrabold text-[#454A3C]">إضافة تنبيه جديد</div>
+        <div className="rounded-xl border border-[#F3DCE2] bg-[#FFF8FA] p-3 space-y-2.5">
+          <div className="text-xs font-extrabold text-[#4A353B]">إضافة تنبيه جديد</div>
           <input
             type="text"
             value={remTitle}
             onChange={e => setRemTitle(e.target.value)}
             placeholder="مثال: أصحي جوزي من النوم / عندي مشوار"
             maxLength={90}
-            className="w-full rounded-xl border border-[#DDD5C3] bg-white p-2.5 text-xs focus:outline-none focus:border-[#1E5631]"
+            className="w-full rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] p-2.5 text-xs focus:outline-none focus:border-[#D47E93]"
           />
 
           <div className="grid grid-cols-2 gap-2">
-            <label className="text-[11px] font-bold text-gray-600">
+            <label className="text-[11px] font-bold text-[#8E757C]">
               التاريخ
               <input
                 type="date"
                 value={remDate}
                 min={todayKey()}
                 onChange={e => setRemDate(e.target.value)}
-                className="mt-1 block w-full rounded-xl border border-[#DDD5C3] bg-white p-2 text-xs focus:outline-none focus:border-[#1E5631]"
+                className="mt-1 block w-full rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] p-2 text-xs focus:outline-none focus:border-[#D47E93]"
               />
             </label>
-            <label className="text-[11px] font-bold text-gray-600">
+            <label className="text-[11px] font-bold text-[#8E757C]">
               الميعاد
               <input
                 type="time"
                 value={remTime}
                 onChange={e => setRemTime(e.target.value)}
-                className="mt-1 block w-full rounded-xl border border-[#DDD5C3] bg-white p-2 text-xs focus:outline-none focus:border-[#1E5631]"
+                className="mt-1 block w-full rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] p-2 text-xs focus:outline-none focus:border-[#D47E93]"
               />
             </label>
           </div>
 
-          <label className="block text-[11px] font-bold text-gray-600">
+          <label className="block text-[11px] font-bold text-[#8E757C]">
             إمتى يوصلك الإشعار؟
             <select
               value={remLead}
               onChange={e => setRemLead(Number(e.target.value) as ReminderLeadMinutes)}
-              className="mt-1 block w-full rounded-xl border border-[#DDD5C3] bg-white p-2.5 text-xs font-bold text-[#1E5631] focus:outline-none focus:border-[#1E5631]"
+              className="mt-1 block w-full rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] p-2.5 text-xs font-bold text-[#C96D84] focus:outline-none focus:border-[#D47E93]"
             >
               {REMINDER_LEAD_TIME_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>
@@ -439,14 +439,14 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
           {/* Sound Profile Selector + Preview */}
           <div className="space-y-1.5 pt-0.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold text-gray-600">نوع صوت التنبيه</span>
+              <span className="text-[11px] font-bold text-[#8E757C]">نوع صوت التنبيه</span>
               <button
                 type="button"
                 onClick={() => void handlePreviewSound()}
                 className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-extrabold transition ${
                   isPreviewingSound
-                    ? 'border-[#1E5631] bg-[#1E5631] text-white'
-                    : 'border-[#D4C7AE] bg-white hover:bg-[#FAF6EC] text-[#1E5631]'
+                    ? 'border-[#D47E93] bg-[#D47E93] text-white'
+                    : 'border-[#F3DCE2] bg-[#FFFFFF] hover:bg-[#FADDE4] text-[#C96D84]'
                 }`}
               >
                 <Volume2 className="w-3 h-3 shrink-0" />
@@ -465,11 +465,11 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
                     className={`rounded-xl border px-2 py-2 text-[11px] font-extrabold transition flex items-center justify-center gap-1 ${
                       isSelected
                         ? option.value === 'alarm'
-                          ? 'bg-[#FFF3E0] border-[#D97706] text-[#9A3412] shadow-xs'
+                          ? 'bg-[#FADDE4] border-[#C96D84] text-[#4A353B] shadow-xs'
                           : option.value === 'vibrate'
-                            ? 'bg-[#EEF2F6] border-[#64748B] text-[#334155] shadow-xs'
-                            : 'bg-[#EEF6EE] border-[#1E5631] text-[#1E5631] shadow-xs'
-                        : 'bg-white border-[#DDD5C3] text-gray-600 hover:border-[#1E5631]/60'
+                            ? 'bg-[#FFF8FA] border-[#8E757C] text-[#4A353B] shadow-xs'
+                            : 'bg-[#FADDE4] border-[#D47E93] text-[#C96D84] shadow-xs'
+                        : 'bg-[#FFFFFF] border-[#F3DCE2] text-[#8E757C] hover:border-[#D47E93]'
                     }`}
                   >
                     <span>{option.emoji}</span>
@@ -478,12 +478,12 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
                 );
               })}
             </div>
-            <p className="text-[10px] text-gray-500">{selectedSoundOption.description}</p>
+            <p className="text-[10px] text-[#8E757C]">{selectedSoundOption.description}</p>
           </div>
 
           {previewAlertDate && (
-            <div className="rounded-lg bg-[#EEF6EE] border border-[#DCE5D3] px-2.5 py-1.5 text-[11px] text-[#1E5631] font-bold flex items-center gap-1.5">
-              <CalendarClock className="w-3.5 h-3.5 shrink-0" />
+            <div className="rounded-lg bg-[#FADDE4]/50 border border-[#F3DCE2] px-2.5 py-1.5 text-[11px] text-[#4A353B] font-bold flex items-center gap-1.5">
+              <CalendarClock className="w-3.5 h-3.5 shrink-0 text-[#C96D84]" />
               <span>
                 الميعاد: {formatArabicTime12h(remTime)} ← الإشعار هيوصلك الساعة{' '}
                 {formatArabicTime12h(previewAlertDate)} ({formatArabicShortDate(previewAlertDate)})
@@ -494,14 +494,14 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
           <button
             type="button"
             onClick={() => void handleAddReminder()}
-            className="w-full min-h-[42px] rounded-xl bg-[#1E5631] hover:bg-[#2E7D32] text-white text-xs font-extrabold py-2.5 px-3 transition flex items-center justify-center gap-1.5"
+            className="w-full min-h-[42px] rounded-xl bg-[#D47E93] hover:bg-[#C96D84] text-white text-xs font-extrabold py-2.5 px-3 transition flex items-center justify-center gap-1.5"
           >
             <Plus className="w-4 h-4" />
             <span>حفظ وتفعيل التنبيه</span>
           </button>
 
           {remStatusMsg && (
-            <p className="text-[11px] font-semibold text-[#1E5631] bg-[#F1F5EC] rounded-lg p-2">
+            <p className="text-[11px] font-semibold text-[#4A353B] bg-[#FADDE4]/55 rounded-lg p-2">
               {remStatusMsg}
             </p>
           )}
@@ -509,7 +509,7 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
 
         {/* Reminders List */}
         {reminders.length === 0 ? (
-          <p className="text-xs text-gray-500 text-center py-2">
+          <p className="text-xs text-[#8E757C] text-center py-2">
             لسه مفيش تنبيهات خاصة. ضيفي ميعاد مهم فوق وهنفكرك قبله أوتوماتيك.
           </p>
         ) : (
@@ -524,23 +524,23 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
               const soundOption = getReminderSoundOption(reminder.soundProfile);
               const soundBadgeClass =
                 soundOption.value === 'alarm'
-                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  ? 'bg-[#FADDE4] text-[#4A353B] border-[#E8A8B7]'
                   : soundOption.value === 'vibrate'
-                    ? 'bg-slate-100 text-slate-700 border-slate-200'
-                    : 'bg-[#EEF6EE] text-[#1E5631] border-[#DCE5D3]';
+                    ? 'bg-[#FFF8FA] text-[#8E757C] border-[#F3DCE2]'
+                    : 'bg-[#FADDE4]/70 text-[#C96D84] border-[#F3DCE2]';
               return (
                 <div
                   key={reminder.id}
                   className={`rounded-xl border p-3 transition ${
                     reminder.enabled
-                      ? 'border-[#DCE5D3] bg-[#FAFDF8]'
-                      : 'border-gray-200 bg-gray-50 opacity-75'
+                      ? 'border-[#F3DCE2] bg-[#FFF8FA]'
+                      : 'border-[#F3DCE2] bg-[#FFF8FA]/60 opacity-75'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <strong className="text-xs font-extrabold text-gray-900">
+                        <strong className="text-xs font-extrabold text-[#4A353B]">
                           {reminder.title}
                         </strong>
                         <span
@@ -549,16 +549,16 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
                           {soundOption.badgeLabel}
                         </span>
                         {isPast && reminder.enabled && (
-                          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] font-bold text-[#C96D84] bg-[#FADDE4] px-1.5 py-0.5 rounded">
                             عدّى ميعاده
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-gray-600">
-                        الميعاد: <span className="font-bold text-gray-800">{formatArabicShortDate(reminder.date)} • {formatArabicTime12h(reminder.time)}</span>
+                      <div className="text-[11px] text-[#8E757C]">
+                        الميعاد: <span className="font-bold text-[#4A353B]">{formatArabicShortDate(reminder.date)} • {formatArabicTime12h(reminder.time)}</span>
                       </div>
                       {alertDate && (
-                        <div className="text-[11px] font-bold text-[#1E5631] flex items-center gap-1">
+                        <div className="text-[11px] font-bold text-[#C96D84] flex items-center gap-1">
                           <Bell className="w-3 h-3 shrink-0" />
                           <span>
                             الإشعار: {formatArabicShortDate(alertDate)} الساعة {formatArabicTime12h(alertDate)} ({getLeadTimeLabel(reminder.leadMinutes)})
@@ -573,8 +573,8 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
                         onClick={() => void handleToggleReminder(reminder)}
                         className={`p-2 rounded-lg border text-xs transition ${
                           reminder.enabled
-                            ? 'border-[#1E5631] bg-[#EEF6EE] text-[#1E5631]'
-                            : 'border-gray-300 bg-white text-gray-500'
+                            ? 'border-[#D47E93] bg-[#FADDE4] text-[#C96D84]'
+                            : 'border-[#F3DCE2] bg-[#FFFFFF] text-[#8E757C]'
                         }`}
                         title={reminder.enabled ? 'إيقاف التنبيه' : 'تفعيل التنبيه'}
                         aria-label={reminder.enabled ? 'إيقاف التنبيه' : 'تفعيل التنبيه'}
@@ -600,14 +600,14 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
       </section>
 
       {/* 2. Household Tasks (مهام البيت) */}
-      <section className="rounded-2xl border border-[#E4DECF] bg-white p-3.5 space-y-3 shadow-xs">
+      <section className="rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3.5 space-y-3 shadow-xs">
         <div className="flex items-center gap-2">
-          <span className="w-8 h-8 rounded-xl bg-[#F4EEE2] text-[#765B3A] flex items-center justify-center shrink-0">
+          <span className="w-8 h-8 rounded-xl bg-[#FADDE4] text-[#C96D84] flex items-center justify-center shrink-0">
             <CheckCircle2 className="w-4 h-4" />
           </span>
           <div>
-            <h4 className="font-extrabold text-sm text-[#1E5631]">مهام البيت ✅</h4>
-            <p className="text-[11px] text-gray-500">اكتبي مهامك اليومية ولو حددتيلها ميعاد وساعة هنفكرك أوتوماتيك</p>
+            <h4 className="font-extrabold text-sm text-[#4A353B]">مهام البيت ✅</h4>
+            <p className="text-[11px] text-[#8E757C]">اكتبي مهامك اليومية ولو حددتيلها ميعاد وساعة هنفكرك أوتوماتيك</p>
           </div>
         </div>
 
@@ -617,39 +617,39 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
             onChange={e => setTaskTitle(e.target.value)}
             placeholder="مثال: ترتيب المطبخ / غسيل الستاير"
             maxLength={100}
-            className="w-full rounded-xl border border-[#DDD5C3] p-2.5 text-xs focus:outline-none focus:border-[#1E5631]"
+            className="w-full rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] p-2.5 text-xs focus:outline-none focus:border-[#D47E93]"
           />
           <div className="grid grid-cols-2 gap-2">
-            <label className="text-[11px] text-gray-600 font-semibold">
+            <label className="text-[11px] text-[#8E757C] font-semibold">
               التاريخ (اختياري)
               <input
                 type="date"
                 value={taskDueDate}
                 min={todayKey()}
                 onChange={e => setTaskDueDate(e.target.value)}
-                className="mt-1 block w-full rounded-xl border border-[#DDD5C3] p-2 text-xs focus:outline-none focus:border-[#1E5631]"
+                className="mt-1 block w-full rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] p-2 text-xs focus:outline-none focus:border-[#D47E93]"
                 aria-label="تاريخ المهمة"
               />
             </label>
-            <label className="text-[11px] text-gray-600 font-semibold">
+            <label className="text-[11px] text-[#8E757C] font-semibold">
               الساعة (اختياري للتنبيه)
               <input
                 type="time"
                 value={taskDueTime}
                 onChange={e => setTaskDueTime(e.target.value)}
-                className="mt-1 block w-full rounded-xl border border-[#DDD5C3] p-2 text-xs focus:outline-none focus:border-[#1E5631]"
+                className="mt-1 block w-full rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] p-2 text-xs focus:outline-none focus:border-[#D47E93]"
                 aria-label="ساعة المهمة"
               />
             </label>
           </div>
 
           {taskDueDate && taskDueTime && (
-            <label className="block text-[11px] font-bold text-gray-600">
+            <label className="block text-[11px] font-bold text-[#8E757C]">
               إمتى يوصلك إشعار المهمة؟
               <select
                 value={taskLead}
                 onChange={e => setTaskLead(Number(e.target.value) as ReminderLeadMinutes)}
-                className="mt-1 block w-full rounded-xl border border-[#DDD5C3] bg-white p-2 text-xs font-bold text-[#1E5631] focus:outline-none focus:border-[#1E5631]"
+                className="mt-1 block w-full rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] p-2 text-xs font-bold text-[#C96D84] focus:outline-none focus:border-[#D47E93]"
               >
                 {REMINDER_LEAD_TIME_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>
@@ -664,13 +664,13 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
         <button
           type="button"
           onClick={() => void addTask()}
-          className="w-full min-h-[40px] rounded-xl bg-[#1E5631] hover:bg-[#2E7D32] p-2 text-xs font-bold text-white transition"
+          className="w-full min-h-[40px] rounded-xl bg-[#D47E93] hover:bg-[#C96D84] p-2 text-xs font-bold text-white transition"
         >
           إضافة مهمة
         </button>
 
         {tasks.length === 0 ? (
-          <p className="text-xs text-gray-500 text-center py-1">ضيفي أول مهمة للبيت.</p>
+          <p className="text-xs text-[#8E757C] text-center py-1">ضيفي أول مهمة للبيت.</p>
         ) : (
           tasks.map(task => {
             const taskAlert =
@@ -678,22 +678,22 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
                 ? computeReminderAlertDate(task.dueDate, task.dueTime, task.leadMinutes ?? 0)
                 : null;
             return (
-              <div key={task.id} className="flex items-start gap-2 border-t border-[#EFE9DA] pt-2.5 text-xs">
+              <div key={task.id} className="flex items-start gap-2 border-t border-[#F3DCE2] pt-2.5 text-xs">
                 <input
                   type="checkbox"
                   checked={task.completed}
                   onChange={e => void handleToggleTask(task, e.target.checked)}
-                  className="mt-1"
+                  className="mt-1 accent-[#D47E93]"
                 />
-                <span className={task.completed ? 'flex-1 text-gray-400 line-through' : 'flex-1'}>
-                  <strong className="block text-gray-900">{task.title}</strong>
-                  <small className="block text-gray-500 mt-0.5">
+                <span className={task.completed ? 'flex-1 text-[#8E757C] line-through' : 'flex-1'}>
+                  <strong className="block text-[#4A353B]">{task.title}</strong>
+                  <small className="block text-[#8E757C] mt-0.5">
                     {task.dueDate
                       ? `${formatArabicShortDate(task.dueDate)}${task.dueTime ? ` • ${formatArabicTime12h(task.dueTime)}` : ''}`
                       : 'بدون موعد محدد'}
                   </small>
                   {taskAlert && !task.completed && (
-                    <small className="block text-[#1E5631] font-bold mt-0.5">
+                    <small className="block text-[#C96D84] font-bold mt-0.5">
                       🔔 الإشعار: {formatArabicShortDate(taskAlert)} الساعة {formatArabicTime12h(taskAlert)} ({getLeadTimeLabel(task.leadMinutes ?? 0)})
                     </small>
                   )}
@@ -712,15 +712,15 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
       </section>
 
       {/* 3. Savings Goals (أهداف التوفير) */}
-      <section className="rounded-2xl border border-[#E4DECF] bg-white p-3.5 space-y-3 shadow-xs">
-        <h4 className="font-extrabold text-sm text-[#1E5631]">أهداف التوفير (التحويش) 🪙</h4>
+      <section className="rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3.5 space-y-3 shadow-xs">
+        <h4 className="font-extrabold text-sm text-[#4A353B]">أهداف التوفير (التحويش) 🪙</h4>
         <div className="grid grid-cols-2 gap-2">
           <input
             value={goalTitle}
             onChange={e => setGoalTitle(e.target.value)}
             placeholder="اسم الهدف"
             maxLength={70}
-            className="rounded-xl border border-[#DDD5C3] p-2 text-xs min-w-0 focus:outline-none focus:border-[#1E5631]"
+            className="rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] p-2 text-xs min-w-0 focus:outline-none focus:border-[#D47E93]"
           />
           <input
             value={goalTarget}
@@ -728,31 +728,31 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
             type="number"
             min="1"
             placeholder="المبلغ بالجنيه"
-            className="rounded-xl border border-[#DDD5C3] p-2 text-xs min-w-0 focus:outline-none focus:border-[#1E5631]"
+            className="rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] p-2 text-xs min-w-0 focus:outline-none focus:border-[#D47E93]"
           />
         </div>
         <button
           type="button"
           onClick={addGoal}
-          className="w-full min-h-[40px] rounded-xl bg-[#1E5631] hover:bg-[#2E7D32] p-2 text-xs font-bold text-white transition"
+          className="w-full min-h-[40px] rounded-xl bg-[#D47E93] hover:bg-[#C96D84] p-2 text-xs font-bold text-white transition"
         >
           إنشاء هدف توفير
         </button>
         {goals.length === 0 ? (
-          <p className="text-xs text-gray-500 text-center py-1">حدد هدفًا مثل مصاريف المدرسة أو جهاز جديد.</p>
+          <p className="text-xs text-[#8E757C] text-center py-1">حدد هدفًا مثل مصاريف المدرسة أو جهاز جديد.</p>
         ) : (
           goals.map(goal => {
             const progress = getSavingsProgress(goal);
             return (
-              <div key={goal.id} className="space-y-2 border-t border-[#EFE9DA] pt-2">
-                <div className="flex justify-between gap-2 text-xs tabular-nums">
+              <div key={goal.id} className="space-y-2 border-t border-[#F3DCE2] pt-2">
+                <div className="flex justify-between gap-2 text-xs tabular-nums text-[#4A353B]">
                   <strong>{goal.title}</strong>
                   <span>
                     {Math.round(progress.saved)} / {goal.targetAmount} ج.م ({progress.percentage}%)
                   </span>
                 </div>
-                <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                  <div className="h-full bg-[#2E7D32]" style={{ width: progress.percentage + '%' }} />
+                <div className="h-2 rounded-full bg-[#FADDE4]/60 overflow-hidden">
+                  <div className="h-full bg-[#D47E93]" style={{ width: progress.percentage + '%' }} />
                 </div>
                 <div className="flex gap-2">
                   <input
@@ -761,12 +761,12 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
                     value={contributions[goal.id] || ''}
                     onChange={e => setContributions(prev => ({ ...prev, [goal.id]: e.target.value }))}
                     placeholder="إضافة مبلغ"
-                    className="min-w-0 flex-1 rounded-xl border border-[#DDD5C3] p-2 text-xs focus:outline-none focus:border-[#1E5631]"
+                    className="min-w-0 flex-1 rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] p-2 text-xs focus:outline-none focus:border-[#D47E93]"
                   />
                   <button
                     type="button"
                     onClick={() => addContribution(goal)}
-                    className="min-h-[38px] rounded-xl bg-[#2E7D32] hover:bg-[#1E5631] px-3 text-xs font-bold text-white transition"
+                    className="min-h-[38px] rounded-xl bg-[#D47E93] hover:bg-[#C96D84] px-3 text-xs font-bold text-white transition"
                   >
                     ادخار
                   </button>

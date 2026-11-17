@@ -59,15 +59,15 @@ const CUISINE_PRIORITY: Record<CuisineTier, number> = {
 export const CUISINE_BADGE_META: Record<CuisineTier, { label: string; className: string }> = {
   egyptian: {
     label: '🇪🇬 مصري',
-    className: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
+    className: 'bg-[#FADDE4] text-[#C96D84] border border-[#F3DCE2]',
   },
   arab: {
     label: '🌍 عربي',
-    className: 'bg-amber-50 text-amber-800 border border-amber-200',
+    className: 'bg-[#FFF8FA] text-[#4A353B] border border-[#E8A8B7]',
   },
   international: {
     label: '🌐 عالمي',
-    className: 'bg-slate-100 text-slate-700 border border-slate-200',
+    className: 'bg-[#FFFFFF] text-[#8E757C] border border-[#F3DCE2]',
   },
 };
 
@@ -1251,16 +1251,16 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
   return (
     <section dir="rtl" className="min-h-full space-y-3" aria-label="البحث الصوتي عن الوصفات أونلاين">
       <div className="flex items-center gap-2">
-        {onBack && <button type="button" onClick={onBack} className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700"><ArrowRight className="h-4 w-4" /> رجوع</button>}
-        <div className="min-w-0 flex-1 rounded-2xl bg-gradient-to-l from-[#EEF6EC] to-white p-3">
-          <h3 className="text-base font-black text-gray-900">مساعد الوصفات الصوتي 🎙️</h3>
-          <p className="mt-1 text-[11px] leading-5 text-gray-600">ابحث بالكلام أو الكتابة، واسمع المكونات وطريقة التحضير بالعربي.</p>
+        {onBack && <button type="button" onClick={onBack} className="inline-flex items-center gap-1 rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] px-3 py-2 text-xs font-bold text-[#4A353B] hover:bg-[#FADDE4]/50"><ArrowRight className="h-4 w-4" /> رجوع</button>}
+        <div className="min-w-0 flex-1 rounded-2xl border border-[#F3DCE2] bg-gradient-to-l from-[#FADDE4]/55 to-[#FFFFFF] p-3">
+          <h3 className="text-base font-black text-[#4A353B]">مساعد الوصفات الصوتي 🎙️</h3>
+          <p className="mt-1 text-[11px] leading-5 text-[#8E757C]">ابحث بالكلام أو الكتابة، واسمع المكونات وطريقة التحضير بالعربي.</p>
         </div>
       </div>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-gray-500">لأسرة من {familySize} أفراد</span>
+        <span className="text-[11px] text-[#8E757C]">لأسرة من {familySize} أفراد</span>
         <button type="button" onClick={() => { setShowSaved(value => !value); setSelected(null); }}
-          className="rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+          className="rounded-xl border border-[#F3DCE2] bg-[#FADDE4] px-3 py-2 text-[11px] font-bold text-[#C96D84]">
           {showSaved ? 'نتائج البحث' : 'المحفوظات'} ({saved.length})
         </button>
       </div>
@@ -1269,21 +1269,21 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
         <form onSubmit={search} className="flex gap-2">
           <input value={query} onChange={event => setQuery(event.target.value)}
             placeholder="قول أو اكتب اسم الأكلة..." maxLength={80}
-            className="min-w-0 flex-1 rounded-xl border border-gray-200 px-3 py-3 text-sm outline-none focus:border-emerald-500" />
+            className="min-w-0 flex-1 rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] px-3 py-3 text-sm outline-none focus:border-[#D47E93]" />
           <button type="button" onClick={() => void startVoiceSearch()} disabled={loading}
             aria-label={voiceListening ? 'إيقاف الاستماع' : 'البحث بالصوت'}
-            className={`rounded-xl px-3 py-2 text-white disabled:opacity-50 ${voiceListening ? 'bg-red-600' : 'bg-[#667B58]'}`}>
+            className={`rounded-xl px-3 py-2 text-white disabled:opacity-50 ${voiceListening ? 'bg-red-600' : 'bg-[#E8A8B7] hover:bg-[#D47E93]'}`}>
             {voiceListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </button>
           <button type="submit" disabled={loading || !query.trim()}
-            className="rounded-xl bg-emerald-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
+            className="rounded-xl bg-[#D47E93] hover:bg-[#C96D84] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
             {loading ? 'جاري البحث…' : <><Search className="inline h-4 w-4 ml-1" /> ابحث</>}
           </button>
         </form>
       )}
 
-      {voiceMessage && <p role="status" className="rounded-xl bg-[#F1F5EC] p-3 text-xs leading-6 text-[#1E5631]">{voiceMessage}</p>}
-      {error && <p role="status" className="rounded-xl bg-amber-50 p-3 text-xs leading-6 text-amber-900">{error}</p>}
+      {voiceMessage && <p role="status" className="rounded-xl border border-[#F3DCE2] bg-[#FADDE4]/55 p-3 text-xs leading-6 text-[#4A353B]">{voiceMessage}</p>}
+      {error && <p role="status" className="rounded-xl border border-[#F3DCE2] bg-[#FADDE4]/55 p-3 text-xs leading-6 text-[#4A353B]">{error}</p>}
 
       {currentItems.length > 0 && (
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -1295,13 +1295,13 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
                 key={item.pageId}
                 type="button"
                 onClick={() => setSelected(item)}
-                className={`flex items-center gap-3 rounded-2xl border p-3 text-right transition hover:border-emerald-400 active:scale-[0.99] ${
+                className={`flex items-center gap-3 rounded-2xl border p-3 text-right transition hover:border-[#D47E93] active:scale-[0.99] ${
                   selected?.pageId === item.pageId
-                    ? 'border-emerald-500 bg-emerald-50/70 shadow-xs'
-                    : 'border-[#E6DFCE] bg-white shadow-2xs'
+                    ? 'border-[#D47E93] bg-[#FADDE4]/55 shadow-xs'
+                    : 'border-[#F3DCE2] bg-[#FFFFFF] shadow-2xs'
                 }`}
               >
-                <span className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-[#F3EBDD]">
+                <span className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-[#FADDE4]/40">
                   {hasImage ? (
                     <img
                       src={item.imageUrl}
@@ -1317,14 +1317,14 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
-                    <span className="min-w-0 flex-1 text-xs font-extrabold leading-5 text-gray-900 line-clamp-2">
+                    <span className="min-w-0 flex-1 text-xs font-extrabold leading-5 text-[#4A353B] line-clamp-2">
                       {item.title}
                     </span>
                     <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap ${badge.className}`}>
                       {badge.label}
                     </span>
                   </div>
-                  <span className="mt-1 block text-[10px] font-medium text-[#626B49]">
+                  <span className="mt-1 block text-[10px] font-medium text-[#C96D84]">
                     اضغط لعرض المقادير والطريقة كاملة ←
                   </span>
                 </div>
@@ -1346,22 +1346,22 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
             role="dialog"
             aria-modal="true"
             aria-labelledby="online-recipe-fullscreen-title"
-            className="fixed inset-0 z-[100] bg-[#F8F3E9] flex flex-col overflow-hidden"
+            className="fixed inset-0 z-[100] bg-[#FFF8FA] flex flex-col overflow-hidden"
           >
             {/* Sticky Top Header */}
-            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[#E4DECF] bg-[#FBF8F1]/95 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur-sm">
+            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[#F3DCE2] bg-[#FFFFFF]/95 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur-sm">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${badge.className}`}>
                     {badge.label}
                   </span>
-                  <span className="text-[11px] font-semibold text-[#68745F]">
+                  <span className="text-[11px] font-semibold text-[#8E757C]">
                     لأسرة من {familySize} أفراد
                   </span>
                 </div>
                 <h4
                   id="online-recipe-fullscreen-title"
-                  className="mt-1 text-base font-black leading-snug text-[#1E5631] line-clamp-2"
+                  className="mt-1 text-base font-black leading-snug text-[#4A353B] line-clamp-2"
                 >
                   {selected.title}
                 </h4>
@@ -1370,7 +1370,7 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
                 type="button"
                 onClick={closeSelectedModal}
                 aria-label="إغلاق"
-                className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-[#DFD7C5] bg-white text-[#43523D] shadow-2xs transition hover:bg-[#F3EDE0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
+                className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-[#F3DCE2] bg-[#FFF8FA] text-[#4A353B] shadow-2xs transition hover:bg-[#FADDE4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1379,7 +1379,7 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
             {/* Full-Screen Scrollable Recipe Content */}
             <div className="flex-1 overflow-y-auto p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
               <div className="mx-auto max-w-2xl space-y-4">
-                <div className="overflow-hidden rounded-2xl border border-[#E4DECF] bg-white shadow-xs">
+                <div className="overflow-hidden rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] shadow-xs">
                   {hasValidImage ? (
                     <img
                       src={selected.imageUrl}
@@ -1389,23 +1389,23 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
                       className="h-56 w-full object-cover sm:h-64"
                     />
                   ) : (
-                    <div className="flex h-48 w-full items-center justify-center bg-[#F3EBDD] p-4">
+                    <div className="flex h-48 w-full items-center justify-center bg-[#FADDE4]/35 p-4">
                       <RecipeIllustration recipeName={selected.title} className="h-36 w-36" />
                     </div>
                   )}
                 </div>
 
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-3.5 py-2.5 text-xs font-bold text-emerald-900">
+                <div className="rounded-xl border border-[#F3DCE2] bg-[#FADDE4]/60 px-3.5 py-2.5 text-xs font-bold text-[#4A353B]">
                   المقادير والكميات محسوبة ومضبوطة لـ {familySize} أفراد
                 </div>
 
                 {sections.ingredients.length > 0 && (
-                  <section className="rounded-2xl border border-[#E4DECF] bg-white p-4 shadow-2xs">
-                    <h5 className="mb-2.5 text-sm font-black text-[#1E5631]">المكونات المطلوبة</h5>
-                    <ul className="space-y-2 text-sm leading-7 text-gray-800">
+                  <section className="rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-4 shadow-2xs">
+                    <h5 className="mb-2.5 text-sm font-black text-[#4A353B]">المكونات المطلوبة</h5>
+                    <ul className="space-y-2 text-sm leading-7 text-[#4A353B]">
                       {sections.ingredients.map((ingredient, index) => (
                         <li key={index} className="flex items-start gap-2">
-                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#626B49]" aria-hidden="true" />
+                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#D47E93]" aria-hidden="true" />
                           <span>{ingredient}</span>
                         </li>
                       ))}
@@ -1413,12 +1413,12 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
                   </section>
                 )}
 
-                <section className="rounded-2xl border border-[#E4DECF] bg-white p-4 shadow-2xs">
-                  <h5 className="mb-3 text-sm font-black text-[#1E5631]">طريقة التحضير خطوة بخطوة</h5>
-                  <ol className="space-y-3 text-sm leading-7 text-gray-800">
+                <section className="rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-4 shadow-2xs">
+                  <h5 className="mb-3 text-sm font-black text-[#4A353B]">طريقة التحضير خطوة بخطوة</h5>
+                  <ol className="space-y-3 text-sm leading-7 text-[#4A353B]">
                     {sections.steps.map((step, index) => (
-                      <li key={index} className="flex items-start gap-3 rounded-xl border border-[#EFE9DA] bg-[#FBF8F1] p-3">
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#626B49] text-xs font-extrabold text-white">
+                      <li key={index} className="flex items-start gap-3 rounded-xl border border-[#F3DCE2] bg-[#FFF8FA] p-3">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#D47E93] text-xs font-extrabold text-white">
                           {['١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩', '١٠'][index] || String(index + 1)}
                         </span>
                         <span className="min-w-0 flex-1">{step}</span>
@@ -1428,7 +1428,7 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
                 </section>
 
                 {selected.imageUrl && !brokenImages[selected.pageId] && (
-                  <p className="text-[10px] leading-5 text-gray-500">
+                  <p className="text-[10px] leading-5 text-[#8E757C]">
                     الصورة: {selected.imageCredit || 'TheMealDB'} — {selected.imageLicense || 'راجع المصدر الأصلي'}
                   </p>
                 )}
@@ -1436,13 +1436,13 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
             </div>
 
             {/* Sticky Bottom Controls Bar */}
-            <footer className="shrink-0 border-t border-[#E4DECF] bg-[#FBF8F1]/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur-sm">
+            <footer className="shrink-0 border-t border-[#F3DCE2] bg-[#FFFFFF]/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur-sm">
               <div className="mx-auto flex max-w-2xl flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => void (speaking ? stopRecipeSpeech() : speakRecipe(selected))}
                   className={`inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-white transition ${
-                    speaking ? 'bg-red-600 hover:bg-red-700' : 'bg-[#1E5631] hover:bg-[#2E7D32]'
+                    speaking ? 'bg-red-600 hover:bg-red-700' : 'bg-[#D47E93] hover:bg-[#C96D84]'
                   }`}
                 >
                   {speaking ? <><VolumeX className="h-4 w-4 shrink-0" /> إيقاف الاستماع</> : <><Volume2 className="h-4 w-4 shrink-0" /> اسمع الوصفة</>}
@@ -1450,7 +1450,7 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
                 <button
                   type="button"
                   onClick={() => saveRecipe(selected)}
-                  className="min-h-[44px] rounded-xl border border-[#DFC98E] bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-900 transition hover:bg-amber-100"
+                  className="min-h-[44px] rounded-xl border border-[#F3DCE2] bg-[#FADDE4] px-3.5 py-2 text-xs font-bold text-[#C96D84] transition hover:bg-[#E8A8B7]/40"
                 >
                   {saved.some(item => item.pageId === selected.pageId) ? '✓ محفوظة' : '☆ احفظ الوصفة'}
                 </button>
@@ -1471,7 +1471,7 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
                     href={selected.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex min-h-[44px] items-center rounded-xl border border-[#D7E2CF] bg-[#F1F5EC] px-3 py-2 text-xs font-bold text-[#1E5631] hover:bg-[#E4ECD9]"
+                    className="inline-flex min-h-[44px] items-center rounded-xl border border-[#F3DCE2] bg-[#FFF8FA] px-3 py-2 text-xs font-bold text-[#C96D84] hover:bg-[#FADDE4]"
                   >
                     المصدر ↗
                   </a>
@@ -1479,7 +1479,7 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
                 <button
                   type="button"
                   onClick={closeSelectedModal}
-                  className="min-h-[44px] rounded-xl border border-[#DFD7C5] bg-white px-4 py-2 text-xs font-bold text-[#43523D] hover:bg-[#F3EDE0]"
+                  className="min-h-[44px] rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] px-4 py-2 text-xs font-bold text-[#4A353B] hover:bg-[#FFF8FA]"
                 >
                   إغلاق
                 </button>
@@ -1491,8 +1491,8 @@ export function OnlineRecipeSearch({ familySize = 4, onBack }: { familySize?: nu
         return typeof document !== 'undefined' ? createPortal(modalNode, document.body) : modalNode;
       })()}
 
-      {!loading && showSaved && saved.length === 0 && <p className="rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-500">لسه مفيش وصفات أونلاين محفوظة.</p>}
-      {!loading && !showSaved && results.length === 0 && !error && <p className="text-[10px] leading-5 text-gray-400">اكتب اسم الأكلة بالعربي أو الإنجليزي، وهندور في مكتبة الوصفات المجانية.</p>}
+      {!loading && showSaved && saved.length === 0 && <p className="rounded-xl border border-[#F3DCE2] bg-[#FFFFFF] p-4 text-center text-xs text-[#8E757C]">لسه مفيش وصفات أونلاين محفوظة.</p>}
+      {!loading && !showSaved && results.length === 0 && !error && <p className="text-[10px] leading-5 text-[#8E757C]">اكتب اسم الأكلة بالعربي أو الإنجليزي، وهندور في مكتبة الوصفات المجانية.</p>}
     </section>
   );
 }

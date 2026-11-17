@@ -3,7 +3,7 @@
 :root {
   color-scheme: light;
   font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #F9FAFB;
+  background: #FFF8FA;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-text-size-adjust: 100%;
@@ -50,51 +50,51 @@ button {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
+  background: #E8A8B7;
   border-radius: 9999px;
 }
 
 
 :root {
   color-scheme: light;
-  --td-cream: #F8F3E9;
-  --td-paper: #FFFDF8;
-  --td-olive: #78815B;
-  --td-olive-dark: #626B49;
-  --td-sand: #E6DFC9;
-  --td-clay: #A68B69;
-  --td-ink: #39382F;
-  --td-muted: #898575;
-  --td-line: #E4DECF;
+  --td-blush: #FFF8FA;
+  --td-paper: #FFFFFF;
+  --td-powder: #FADDE4;
+  --td-warm-pink: #E8A8B7;
+  --td-dusty-rose: #D47E93;
+  --td-deep-rose: #C96D84;
+  --td-ink: #4A353B;
+  --td-muted: #8E757C;
+  --td-line: #F3DCE2;
 }
-html, body, #root { background: var(--td-cream) !important; }
+html, body, #root { background: var(--td-blush) !important; }
 body { color: var(--td-ink); }
-::selection { background: #DCE1CB; color: var(--td-ink); }
-::-webkit-scrollbar-thumb { background: #C9C5B5; }
+::selection { background: #FADDE4; color: var(--td-ink); }
+::-webkit-scrollbar-thumb { background: #E8A8B7; }
 
-/* Map legacy bright brand utilities to the calm olive-and-cream palette. */
-[class*="from-[#1565C0]"], [class*="via-[#1565C0]"], [class*="to-[#1565C0]"] { --tw-gradient-from: #78815B var(--tw-gradient-from-position); --tw-gradient-to: rgb(120 129 91 / 0) var(--tw-gradient-to-position); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to); }
-[class*="from-[#002171]"], [class*="via-[#002171]"], [class*="to-[#002171]"] { --tw-gradient-from: #626B49 var(--tw-gradient-from-position); --tw-gradient-to: rgb(98 107 73 / 0) var(--tw-gradient-to-position); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to); }
+/* Map any legacy blue/amber utilities cleanly to the Powder Pink palette. */
+[class*="from-[#1565C0]"], [class*="via-[#1565C0]"], [class*="to-[#1565C0]"] { --tw-gradient-from: #E8A8B7 var(--tw-gradient-from-position); --tw-gradient-to: rgb(232 168 183 / 0) var(--tw-gradient-to-position); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to); }
+[class*="from-[#002171]"], [class*="via-[#002171]"], [class*="to-[#002171]"] { --tw-gradient-from: #D47E93 var(--tw-gradient-from-position); --tw-gradient-to: rgb(212 126 147 / 0) var(--tw-gradient-to-position); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to); }
 [class*="bg-blue-"], [class*="bg-[#0D47A1]"], [class*="bg-[#002171]"], [class*="bg-[#1565C0]"],
-[class*="bg-[#1E40AF]"], [class*="bg-[#0D47A1]"] {
-  background-color: var(--td-olive-dark) !important;
+[class*="bg-[#1E40AF]"] {
+  background-color: var(--td-dusty-rose) !important;
 }
 [class*="bg-blue-50"], [class*="bg-blue-100"], [class*="bg-blue-200"] {
-  background-color: #EEF0E6 !important;
+  background-color: var(--td-powder) !important;
 }
 [class*="text-blue-"], [class*="text-[#0D47A1]"], [class*="text-[#1565C0]"], [class*="text-[#1E293B]"] {
-  color: var(--td-olive-dark) !important;
+  color: var(--td-deep-rose) !important;
 }
-[class*="border-blue-"] { border-color: #D8DDCB !important; }
+[class*="border-blue-"] { border-color: var(--td-line) !important; }
 [class*="bg-amber-"], [class*="bg-yellow-"], [class*="bg-orange-"],
 [class*="bg-[#FFE54C]"], [class*="bg-[#D8C69A]"] {
-  background-color: #EFE7D4 !important;
+  background-color: var(--td-powder) !important;
 }
 [class*="text-amber-"], [class*="text-yellow-"], [class*="text-orange-"] {
-  color: #796648 !important;
+  color: var(--td-deep-rose) !important;
 }
 [class*="border-amber-"], [class*="border-yellow-"], [class*="border-orange-"] {
-  border-color: #E4D9C1 !important;
+  border-color: var(--td-line) !important;
 }
 /* Lightweight, consistent feedback when switching between app sections. */
 html {
