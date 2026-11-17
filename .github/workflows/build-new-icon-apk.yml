@@ -77,7 +77,7 @@ jobs:
           values = res / "values"
           values.mkdir(parents=True, exist_ok=True)
           (values / "ic_launcher_background.xml").write_text(
-              '<?xml version="1.0" encoding="utf-8"?>\\n<resources>\\n    <color name="ic_launcher_background">#F7A9C2</color>\\n</resources>\\n'
+              '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#F7A9C2</color>\n</resources>\n'
           )
 
           public = Path("public")
