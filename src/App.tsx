@@ -93,8 +93,25 @@ import {
   OFFICIAL_TEST_REWARDED_AD_UNIT
 } from './services/rewardedAdService';
 import {
+  ALARM_DISMISS_ACTION_ID,
+  getChannelIdForSoundProfile,
   getLocalNotificationService,
 } from './services/localNotificationService';
+import {
+  ALARM_DISMISS_EVENT,
+  ALARM_TRIGGER_EVENT,
+  startPersistentAlarmLoop,
+  stopPersistentAlarmLoop,
+  type ActiveAlarmPayload,
+} from './services/reminderSoundPreview';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { customRemindersRepository } from './features/household/customReminderRepository';
+import {
+  computeReminderAlertDate,
+  formatArabicTime12h,
+  getLeadTimeLabel,
+  resolveReminderSoundProfile,
+} from './features/household/customReminderModels';
 import {
   WEEKLY_DAYS_SCHEDULE,
   getRecipeById,
@@ -107,6 +124,7 @@ import {
 } from './data/affiliateDeals';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ActiveAlarmOverlay } from './components/ActiveAlarmOverlay';
 import { RecipeIllustration } from './components/RecipeIllustration';
 import { ShoppingTotalsSummary } from './features/shopping/ShoppingTotalsSummary';
 import { HomeInventorySection } from './features/inventory/HomeInventorySection';
@@ -1106,6 +1124,152 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3200);
   };
 
+  const [activeAlarm, setActiveAlarm] = useState<ActiveAlarmPayload | null>(null);
+
+  // Sync saved custom reminders globally and wire persistent alarm triggers/listeners across all tabs
+  useEffect(() => {
+    const svc = getLocalNotificationService();
+    const now = Date.now();
+    for (const r of customRemindersRepository.read()) {
+      if (!r.enabled) continue;
+      const alertDate = computeReminderAlertDate(r.date, r.time, r.leadMinutes);
+      if (alertDate && alertDate.getTime() > now) {
+        const soundProfile = resolveReminderSoundProfile(r.soundProfile);
+        void svc.scheduleOneOffNotification({
+          id: r.notificationId,
+          title: `تذكير: ${r.title}`,
+          body: `الميعاد ${formatArabicTime12h(r.time)} (${getLeadTimeLabel(r.leadMinutes)})`,
+          triggerAt: alertDate,
+          soundProfile,
+          channelId: getChannelIdForSoundProfile(soundProfile),
+          alarmTitle: r.title,
+        });
+      }
+    }
+
+    const handleTriggerOverlay = (event: Event) => {
+      const detail = (event as CustomEvent<ActiveAlarmPayload>).detail;
+      if (detail) {
+        setActiveAlarm(detail);
+      }
+    };
+
+    const handleDismissOverlay = () => {
+      setActiveAlarm(null);
+    };
+
+    const handleWebReminderAlert = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        id?: number;
+        title?: string;
+        body?: string;
+        soundProfile?: string;
+        alarmTitle?: string;
+      }>).detail;
+      if (!detail) return;
+      if (resolveReminderSoundProfile(detail.soundProfile) === 'alarm') {
+        startPersistentAlarmLoop({
+          id: detail.id,
+          title: detail.alarmTitle || detail.title,
+        });
+      } else {
+        showToast(detail.title ? `🔔 ${detail.title}` : '🔔 تذكير من تدبيرة');
+      }
+    };
+
+    window.addEventListener(ALARM_TRIGGER_EVENT, handleTriggerOverlay);
+    window.addEventListener(ALARM_DISMISS_EVENT, handleDismissOverlay);
+    window.addEventListener('tadbeeraCustomReminderAlert', handleWebReminderAlert);
+
+    let receivedHandle: { remove(): Promise<void> | void } | undefined;
+    let actionHandle: { remove(): Promise<void> | void } | undefined;
+
+    if (isNativeApp && Capacitor.isPluginAvailable('LocalNotifications')) {
+      void LocalNotifications.addListener('localNotificationReceived', (notification) => {
+        const extra = (notification.extra || {}) as Record<string, unknown>;
+        const isAlarm =
+          extra.soundProfile === 'alarm' || notification.channelId === 'tedbeera_alarm';
+        if (isAlarm) {
+          startPersistentAlarmLoop({
+            id: notification.id,
+            title: String(extra.alarmTitle || notification.title || ''),
+          });
+        }
+      }).then((handle) => {
+        receivedHandle = handle;
+      }).catch(() => {});
+
+      void LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+        const notification = action.notification;
+        const extra = (notification?.extra || {}) as Record<string, unknown>;
+        if (action.actionId === ALARM_DISMISS_ACTION_ID) {
+          stopPersistentAlarmLoop();
+          setActiveAlarm(null);
+          if (typeof notification?.id === 'number') {
+            void svc.dismissDeliveredNotification(notification.id);
+          }
+          showToast('تم إيقاف المنبه 🛑');
+          return;
+        }
+        const isAlarm =
+          extra.soundProfile === 'alarm' || notification?.channelId === 'tedbeera_alarm';
+        if (isAlarm && notification) {
+          startPersistentAlarmLoop({
+            id: notification.id,
+            title: String(extra.alarmTitle || notification.title || ''),
+          });
+        }
+      }).then((handle) => {
+        actionHandle = handle;
+      }).catch(() => {});
+    }
+
+    return () => {
+      window.removeEventListener(ALARM_TRIGGER_EVENT, handleTriggerOverlay);
+      window.removeEventListener(ALARM_DISMISS_EVENT, handleDismissOverlay);
+      window.removeEventListener('tadbeeraCustomReminderAlert', handleWebReminderAlert);
+      void receivedHandle?.remove();
+      void actionHandle?.remove();
+    };
+  }, [isNativeApp]);
+
+  const handleDismissActiveAlarm = () => {
+    const currentId = activeAlarm?.id;
+    stopPersistentAlarmLoop();
+    setActiveAlarm(null);
+    if (typeof currentId === 'number') {
+      void getLocalNotificationService().dismissDeliveredNotification(currentId);
+    }
+    showToast('تم إيقاف المنبه 🛑');
+  };
+
+  const handleSnoozeActiveAlarm = () => {
+    const currentAlarm = activeAlarm;
+    stopPersistentAlarmLoop();
+    setActiveAlarm(null);
+    if (currentAlarm) {
+      const svc = getLocalNotificationService();
+      if (typeof currentAlarm.id === 'number') {
+        void svc.dismissDeliveredNotification(currentAlarm.id);
+      }
+      const snoozeAt = new Date(Date.now() + 5 * 60 * 1000);
+      const snoozeId =
+        typeof currentAlarm.id === 'number'
+          ? currentAlarm.id
+          : Math.floor(1000 + Math.random() * 1_000_000);
+      void svc.scheduleOneOffNotification({
+        id: snoozeId,
+        title: `غفوة منبه تدبيرة: ${currentAlarm.title} ⏰`,
+        body: `تذكير بعد 5 دقائق (${formatArabicTime12h(snoozeAt)})`,
+        triggerAt: snoozeAt,
+        soundProfile: 'alarm',
+        channelId: getChannelIdForSoundProfile('alarm'),
+        alarmTitle: currentAlarm.title,
+      });
+    }
+    showToast('تم تأجيل المنبه 5 دقائق (غفوة) 💤');
+  };
+
   // Safe Scaled Recipe Cost Calculator (Guaranteed non-NaN)
   const getScaledCost = (recipe: Recipe): number => {
     const baseServings = Math.max(1, recipe.baseServings || 4);
@@ -1485,10 +1649,21 @@ export default function App() {
     [showAllExpenseHistory, expenses, payCycleExpenses]
   );
 
+  const parsedBudgetAmount = useMemo(() => {
+    const parsed = parseSafePrice(budgetAmount);
+    return parsed !== null && parsed >= 0 ? parsed : 0;
+  }, [budgetAmount]);
+
   // Budget Reconciled Breakdown & Calculations
   const budgetBreakdown = useMemo(() => {
-    return reconcileDirectBudgetAllocations(categories, categoryAllocations, payCycleExpenses);
-  }, [categories, categoryAllocations, payCycleExpenses]);
+    const raw = reconcileDirectBudgetAllocations(categories, categoryAllocations, payCycleExpenses);
+    const totalAllocated = raw.reduce((sum, item) => sum + item.allocated, 0);
+    const base = parsedBudgetAmount > 0 ? parsedBudgetAmount : totalAllocated;
+    return raw.map(item => ({
+      ...item,
+      percentage: base > 0 ? Math.round((item.allocated / base) * 100) : 0,
+    }));
+  }, [categories, categoryAllocations, payCycleExpenses, parsedBudgetAmount]);
 
   const totalSpentAll = useMemo(() => {
     return payCycleExpenses.reduce((acc, curr) => {
@@ -2074,32 +2249,22 @@ export default function App() {
                     <button type="button" onClick={() => setActiveTab('food')} className="text-right rounded-2xl border border-[#EEDFD4] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F7EDE4] text-[#A66D4C] flex items-center justify-center"><Utensils className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">المطبخ والوصفات</b><small className="block text-[10px] text-[#969184] mt-0.5">اختاروا طبخة النهارده</small></button>
                     <button type="button" onClick={() => setActiveTab('saved')} className="text-right rounded-2xl border border-[#E9E1D3] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F4EEE2] text-[#98764C] flex items-center justify-center"><ShoppingCart className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">قائمة المشتريات</b><small className="block text-[10px] text-[#969184] mt-0.5">{shoppingItems.filter(item => !item.isChecked).length} أصناف لسه محتاجة تتجاب</small></button>
                     <button type="button" onClick={() => setActiveTab('budget')} className="text-right rounded-2xl border border-[#E2E8DC] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#EEF1E8] text-[#667B58] flex items-center justify-center"><Wallet className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">ميزانية البيت</b><small className="block text-[10px] text-[#969184] mt-0.5">المبلغ المحدد: {budgetAmount || '—'} ج.م</small></button>
-                    <button type="button" onClick={() => setActiveTab('household')} className="text-right rounded-2xl border border-[#E8E2D5] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F0EEE7] text-[#857B60] flex items-center justify-center"><Home className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">إدارة البيت</b><small className="block text-[10px] text-[#969184] mt-0.5">المخزون والمهام المنزلية</small></button>
+                    <button type="button" onClick={() => setActiveTab('household')} className="text-right rounded-2xl border border-[#E8E2D5] bg-[#FFFEFA] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-xl bg-[#F0EEE7] text-[#857B60] flex items-center justify-center"><Home className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#454A3C]">إدارة البيت</b><small className="block text-[10px] text-[#969184] mt-0.5">التنبيهات والمهام والادخار</small></button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewItemName('');
-                        setNewItemQty('1');
-                        setNewItemUnit('حبة');
-                        setNewItemUnitPrice('');
-                        setIsAddItemModalOpen(true);
-                      }}
-                      className="min-h-[44px] rounded-xl bg-[#1E5631] hover:bg-[#2E7D32] text-white py-2.5 px-3 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
-                    >
-                      <Plus className="w-4 h-4 shrink-0" />
-                      <span>إضافة نواقص للسوق</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setExpenseAmount(''); setExpenseDesc(''); setIsAddExpenseModalOpen(true); }}
-                      className="min-h-[44px] rounded-xl bg-[#F3EBDD] text-[#526748] border border-[#E8E0D1] py-2.5 px-3 text-[11px] font-bold flex items-center justify-center gap-1.5 transition"
-                    >
-                      <Receipt className="w-4 h-4 shrink-0" />
-                      <span>تسجيل مصروف</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewItemName('');
+                      setNewItemQty('1');
+                      setNewItemUnit('حبة');
+                      setNewItemUnitPrice('');
+                      setIsAddItemModalOpen(true);
+                    }}
+                    className="w-full min-h-[44px] rounded-xl bg-[#1E5631] hover:bg-[#2E7D32] text-white py-2.5 px-3 text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-xs"
+                  >
+                    <Plus className="w-4 h-4 shrink-0" />
+                    <span>إضافة نواقص للسوق</span>
+                  </button>
                   <div className="rounded-2xl border border-[#E8E1D3] bg-[#F3EBDD] p-3.5 space-y-2.5">
                     <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-extrabold text-[#66563F]">💡 تدبيرة اليوم</span><span className={dailyCompleted ? "text-[10px] font-bold text-[#526748]" : "text-[10px] font-bold text-[#8A704D]"}>{dailyCompleted ? "أنجزتوا تحدي النهارده ✓" : "خطوة صغيرة لبيت أهدى"}</span></div>
                     <p className="text-[11px] text-[#796B56] leading-5">{todayChallenge.title}</p>
@@ -2127,7 +2292,7 @@ export default function App() {
                 <ErrorBoundary fallbackTitle="تعذر تحميل شاشة إدارة البيت">
                   <React.Suspense fallback={<div className="rounded-2xl bg-white border border-[#E8E0D1] p-4 text-center text-xs text-[#667B58]">بنجهز إدارة البيت…</div>}>
                     <HouseholdHub
-                      onNotify={handleNotify}
+                      onNotify={showToast}
                     />
                   </React.Suspense>
                 </ErrorBoundary>
@@ -2736,7 +2901,7 @@ export default function App() {
                     className="w-full bg-[#626B49] hover:bg-[#1E5631] text-white font-extrabold py-3 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md transition"
                   >
                     <Plus className="w-4 h-4 text-[#D8C69A]" />
-                    <span>⚡ تسجيل مصروف فوري</span>
+                    <span>سجّلي مصروف جديد +</span>
                   </button>
 
                   {/* Smart Financial Advisor Banner */}
@@ -2907,7 +3072,7 @@ export default function App() {
                         </div>
                         <p className="text-xs font-bold text-gray-600">لا توجد مصاريف مسجلة حتى الآن لرسم المخطط 📊</p>
                         <p className="text-[11px] text-gray-400 max-w-xs mx-auto leading-relaxed">
-                          سجّل أول عملية صرف من زر "تسجيل مصروف" بالأسفل لتشاهد رسم بياني يوضح نسب إنفاقك على كل بند.
+                          سجّلي أول عملية صرف من زر &quot;سجّلي مصروف جديد +&quot; بالأعلى لتشاهد رسم بياني يوضح نسب إنفاقك على كل بند.
                         </p>
                       </div>
                     ) : (
@@ -3027,8 +3192,8 @@ export default function App() {
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs px-1">
                       <span className="font-bold text-gray-700">نماذج ميزانية مقترحة:</span>
-                      <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                        ✅ الميزانية موزعة بالكامل
+                      <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 tabular-nums">
+                        إجمالي المخصص: {budgetBreakdown.reduce((sum, item) => sum + item.allocated, 0)} ج.م
                       </span>
                     </div>
                     <div className="flex gap-1.5 overflow-x-auto pb-1">
@@ -3139,30 +3304,41 @@ export default function App() {
 
                           <p className="text-[11px] text-gray-500 leading-normal">{cat.tip}</p>
 
-                          {/* Synchronized Slider with Boundary Controls (Strict 100% Invariant Preserved) */}
+                          {/* Direct Independent EGP Allocation Controls */}
                           <div className="flex items-center gap-1.5 pt-1">
                             <button
-                              onClick={() => handleUpdatePercentage(idx, cat.percentage - 5)}
-                              className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-extrabold text-xs px-2 py-1 rounded-lg transition"
-                              title="إنقاص 5%"
+                              type="button"
+                              onClick={() => handleUpdateAllocation(cat.id, -100)}
+                              className="min-h-[36px] bg-gray-100 hover:bg-gray-200 text-gray-700 font-extrabold text-xs px-2.5 py-1.5 rounded-lg transition shrink-0"
+                              title="إنقاص 100 ج.م"
                             >
-                              -5%
+                              -100 ج.م
                             </button>
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              step="1"
-                              value={cat.percentage}
-                              onChange={(e) => handleUpdatePercentage(idx, parseInt(e.target.value))}
-                              className="w-full accent-[#626B49] cursor-pointer"
-                            />
+                            <div className="relative flex-1 min-w-0">
+                              <input
+                                type="number"
+                                min="0"
+                                step="50"
+                                aria-label={`المبلغ المخصص لبند ${cat.name}`}
+                                value={cat.allocated}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  const parsed = raw === '' ? 0 : Math.max(0, Math.round(Number(raw) || 0));
+                                  handleUpdateAllocation(cat.id, parsed, true);
+                                }}
+                                className="w-full min-h-[36px] text-center font-extrabold text-xs text-[#626B49] bg-[#FBF8F1] border border-[#DDD5C3] rounded-lg px-2 py-1.5 pl-9 focus:outline-none focus:border-[#1E5631]"
+                              />
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400 pointer-events-none">
+                                ج.م
+                              </span>
+                            </div>
                             <button
-                              onClick={() => handleUpdatePercentage(idx, cat.percentage + 5)}
-                              className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-extrabold text-xs px-2 py-1 rounded-lg transition"
-                              title="زيادة 5%"
+                              type="button"
+                              onClick={() => handleUpdateAllocation(cat.id, 100)}
+                              className="min-h-[36px] bg-[#EEF6EE] hover:bg-[#DCEAD7] text-[#1E5631] font-extrabold text-xs px-2.5 py-1.5 rounded-lg transition shrink-0"
+                              title="زيادة 100 ج.م"
                             >
-                              +5%
+                              +100 ج.م
                             </button>
                           </div>
                         </div>
@@ -3185,21 +3361,13 @@ export default function App() {
                         <h3 className="font-extrabold text-xs text-gray-900">سجل المصاريف الحقيقية:</h3>
                         <span className="text-[10px] text-gray-400">{showAllExpenseHistory ? 'كل المصروفات المسجلة' : 'مصروفات دورة الراتب الحالية'}</span>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => setShowAllExpenseHistory(value => !value)}
-                          className="text-[10px] font-bold text-[#626B49] border border-[#E4DECF] rounded-lg px-2 py-1"
-                        >
-                          {showAllExpenseHistory ? 'الدورة الحالية' : 'كل السجل'}
-                        </button>
-                        <button
-                        onClick={() => setIsAddExpenseModalOpen(true)}
-                        className="bg-[#626B49] hover:bg-[#1E5631] text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-sm transition"
+                      <button
+                        type="button"
+                        onClick={() => setShowAllExpenseHistory(value => !value)}
+                        className="text-[10px] font-bold text-[#626B49] border border-[#E4DECF] rounded-lg px-2.5 py-1"
                       >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>تسجيل مصروف</span>
-                        </button>
-                      </div>
+                        {showAllExpenseHistory ? 'الدورة الحالية' : 'كل السجل'}
+                      </button>
                     </div>
 
                     <div className="text-[10px] text-gray-400 -mt-1">{showAllExpenseHistory ? 'كل السجل المالي' : `دورة الراتب الحالية: ${payCycleRange.label}`}</div>
@@ -3609,244 +3777,244 @@ export default function App() {
               {activeTab === 'saved' && (
                 <div className="space-y-4">
                   <div>
-                    <h2 className="text-lg font-extrabold text-[#1E5631]">التسوق وقائمة النواقص 🛒</h2>
+                    <h2 className="text-lg font-extrabold text-[#1E5631]">التسوق ومخزون البيت 🛒</h2>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      طلبات السوق والنواقص المحفوظة بدون إنترنت مع روابط مباشرة لمتاجر السوبرماركت.
+                      تابعي مخزون البيت، سجّلي نواقص السوق، شاركيها على واتساب، أو اطلبي أونلاين بسهولة.
                     </p>
                   </div>
 
-                  {/* Reliable, Transparent Shopping List Interface (No NaN Ever) */}
-                    <div className="space-y-3">
-                      {/* Financial Grand Total Banner */}
-                      <div className="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm space-y-2.5">
-                        <ShoppingTotalsSummary totals={shoppingTotals} items={shoppingItems} />
+                  {/* 1. قائمة احتياجات ومخزون البيت (Household Pantry & Needs) */}
+                  <HomeInventorySection onAddLowStockToShopping={handleAddLowStockToShopping} />
 
-                      </div>
+                  {/* 2. قائمة المشتريات والنواقص (Shopping List / النواقص) */}
+                  <div className="space-y-3">
+                    {/* Financial Grand Total Banner */}
+                    <div className="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-sm space-y-2.5">
+                      <ShoppingTotalsSummary totals={shoppingTotals} items={shoppingItems} />
+                    </div>
 
-                        {/* Feature 1: WhatsApp Sharing Action */}
-                        <button
-                          onClick={handleShareShoppingWhatsApp}
-                          className="w-full min-h-[44px] bg-[#1E5631] hover:bg-[#2E7D32] text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
-                          title="مشاركة الأصناف غير المشتراة عبر تطبيق واتساب"
-                        >
-                          <Share2 className="w-4 h-4" />
-                          <span>مشاركة قائمة النواقص عبر واتساب</span>
-                        </button>
+                    <div className="flex items-center justify-between pt-1 text-xs">
+                      <button
+                        onClick={() => {
+                          setNewItemName('');
+                          setNewItemQty('1');
+                          setNewItemUnit('حبة');
+                          setNewItemUnitPrice('');
+                          setIsAddItemModalOpen(true);
+                        }}
+                        className="min-h-[40px] bg-[#1E5631] hover:bg-[#2E7D32] text-white px-3.5 py-2 rounded-xl font-bold flex items-center gap-1 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>إضافة طلب جديد</span>
+                      </button>
 
-                        {/* Direct Store / Grocery Quick-Links */}
-                        <div className="bg-[#F5F0E5]/90 p-3.5 rounded-2xl border border-[#E4DECF] shadow-sm space-y-3">
-                          <div className="border-b border-[#E4DECF] pb-2.5">
-                            <div className="flex items-center gap-1.5">
-                              <ShoppingCart className="w-4 h-4 text-[#1E5631] shrink-0" />
-                              <h3 className="text-xs font-extrabold text-[#1E5631]">🛒 اطلب نواقصك من المتجر</h3>
-                            </div>
-                            <p className="mt-1 text-[11px] text-[#5C5548] leading-relaxed">
-                              {shoppingItems.some(i => !i.isChecked)
-                                ? `عندك ${shoppingItems.filter(i => !i.isChecked).length} أصناف ناقصة — افتح قسم السوبرماركت في المتجر مباشرة لطلبها بسهولة.`
-                                : 'روابط مباشرة لأشهر متاجر السوبرماركت والبقالة في مصر لتصفح العروض اليومية.'}
-                            </p>
-                          </div>
-
-                          <div className="space-y-2.5">
-                            {matchDealsForShoppingItems(shoppingItems.length).map(deal => {
-                              const hasMissing = shoppingItems.some(i => !i.isChecked);
-                              return (
-                                <div key={deal.id} className="bg-white p-3 rounded-xl border border-[#E6DFCE] shadow-xs space-y-2.5">
-                                  <div>
-                                    <span className="block font-extrabold text-xs text-gray-900">{deal.partnerName}</span>
-                                    <p className="text-[11px] text-[#5C5548] mt-1 leading-relaxed">{deal.description}</p>
-                                  </div>
-
-                                  <a
-                                    href={deal.affiliateTrackingUrl || deal.officialUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="w-full min-h-[44px] bg-[#1E5631] hover:bg-[#2E7D32] text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
-                                  >
-                                    <span>{hasMissing ? `اطلب النواقص من ${deal.shortName}` : `تصفح عروض ${deal.shortName}`}</span>
-                                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                                  </a>
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          <div className="pt-0.5 text-center">
-                            <p className="text-[10px] text-[#6E675A] leading-relaxed">
-                              روابط مباشرة للمواقع الرسمية للمتاجر — قد يحصل تطبيق تدبيرة على عمولة بسيطة لدعم استمرار التطوير المجاني.
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs">
+                      <div className="flex gap-1.5">
+                        {shoppingItems.some(i => i.isChecked) && (
                           <button
                             onClick={() => {
-                              setNewItemName('');
-                              setNewItemQty('1');
-                              setNewItemUnit('حبة');
-                              setNewItemUnitPrice('');
-                              setIsAddItemModalOpen(true);
+                              setShoppingItems(prev => prev.filter(i => !i.isChecked));
+                              showToast('تم مسح الأصناف المشتراة');
                             }}
-                            className="min-h-[40px] bg-[#1E5631] hover:bg-[#2E7D32] text-white px-3.5 py-2 rounded-xl font-bold flex items-center gap-1 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
+                            className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
                           >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>إضافة طلب جديد</span>
+                            مسح المكتمل
                           </button>
+                        )}
+                        {shoppingItems.length > 0 && (
+                          <button
+                            onClick={() => setIsClearShoppingConfirmOpen(true)}
+                            className="bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
+                          >
+                            إفراغ القائمة
+                          </button>
+                        )}
+                      </div>
+                    </div>
 
-                          <div className="flex gap-1.5">
-                            {shoppingItems.some(i => i.isChecked) && (
-                              <button
-                                onClick={() => {
-                                  setShoppingItems(prev => prev.filter(i => !i.isChecked));
-                                  showToast('تم مسح الأصناف المشتراة');
-                                }}
-                                className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
-                              >
-                                مسح المكتمل
-                              </button>
-                            )}
-                            {shoppingItems.length > 0 && (
-                              <button
-                                onClick={() => setIsClearShoppingConfirmOpen(true)}
-                                className="bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
-                              >
-                                إفراغ القائمة
-                              </button>
-                            )}
-                          </div>
+                    {/* Empty State or Shopping Items List */}
+                    {shoppingItems.length === 0 ? (
+                      <div className="bg-white p-8 rounded-3xl text-center border border-dashed border-gray-300 space-y-3">
+                        <div className="w-14 h-14 bg-[#F1F3EA] text-[#626B49] rounded-full mx-auto flex items-center justify-center shadow-inner">
+                          <ShoppingCart className="w-7 h-7" />
                         </div>
+                        <h4 className="text-base font-extrabold text-gray-800">
+                          لا توجد نواقص حاليًا.. دولاب خزينك تمام! 🧺
+                        </h4>
+                        <p className="text-xs text-gray-500 leading-relaxed max-w-xs mx-auto">
+                          تقدر تضيف طلبات بالضغط على زر &quot;إضافة طلب جديد&quot; أو من مخزون البيت أعلاه أو من أي وصفة في المطبخ.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {shoppingItems.map(item => {
+                          const lineTotal = calculateLineTotal(item.quantity, item.unitPrice);
 
-                      {/* Empty State */}
-                      {shoppingItems.length === 0 ? (
-                        <div className="bg-white p-8 rounded-3xl text-center border border-dashed border-gray-300 space-y-3">
-                          <div className="w-14 h-14 bg-[#F1F3EA] text-[#626B49] rounded-full mx-auto flex items-center justify-center shadow-inner">
-                            <ShoppingCart className="w-7 h-7" />
-                          </div>
-                          <h4 className="text-base font-extrabold text-gray-800">
-                            لا توجد نواقص حاليًا.. دولاب خزينك تمام! 🧺
-                          </h4>
-                          <p className="text-xs text-gray-500 leading-relaxed max-w-xs mx-auto">
-                            تقدر تضيف طلبات بالضغط على زر "إضافة طلب جديد" أو من أي وصفة تختارها في تدبيرة الأكل لنقل النواقص تلقائياً.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {shoppingItems.map(item => {
-                            const lineTotal = calculateLineTotal(item.quantity, item.unitPrice);
-
-                            return (
-                              <div
-                                key={item.id}
-                                className={`p-3 rounded-2xl border transition ${
-                                  item.isChecked
-                                    ? 'bg-gray-50/70 border-gray-200 opacity-70'
-                                    : 'bg-white border-gray-200 shadow-xs'
-                                }`}
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  {/* Checkbox & Item Name */}
-                                  <div
-                                    onClick={() => {
-                                      setShoppingItems(prev => prev.map(i => i.id === item.id ? { ...i, isChecked: !i.isChecked } : i));
-                                    }}
-                                    className="flex items-center gap-2.5 cursor-pointer flex-1"
-                                  >
-                                    <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition ${
-                                      item.isChecked ? 'bg-[#626B49] border-[#626B49] text-white' : 'border-gray-300 bg-white'
-                                    }`}>
-                                      {item.isChecked && <Check className="w-3.5 h-3.5" />}
-                                    </div>
-                                    <div>
-                                      <span className={`text-xs font-bold ${item.isChecked ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                                        {item.name}
-                                      </span>
-                                      <div className="flex items-center gap-1.5 mt-0.5">
-                                        {item.unitPrice !== null ? (
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setEditingPriceItem({
-                                                id: item.id,
-                                                name: item.name,
-                                                currentPrice: item.unitPrice !== null ? item.unitPrice.toString() : ''
-                                              });
-                                            }}
-                                            className="text-[10px] text-gray-500 hover:text-[#626B49] flex items-center gap-0.5"
-                                            title="اضغط لتعديل سعر الوحدة"
-                                          >
-                                            <span>سعر الوحدة: {item.unitPrice} ج.م</span>
-                                            <Edit3 className="w-2.5 h-2.5 text-gray-400" />
-                                          </button>
-                                        ) : (
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setEditingPriceItem({
-                                                id: item.id,
-                                                name: item.name,
-                                                currentPrice: ''
-                                              });
-                                            }}
-                                            className="text-[10px] text-amber-700 font-bold bg-[#F7F0DE] hover:bg-[#EFE5C8] px-1.5 py-0.5 rounded border border-[#E6D9B8] flex items-center gap-1"
-                                          >
-                                            <span>السعر غير محدد</span>
-                                            <span className="text-[#626B49] underline">حدد السعر</span>
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
+                          return (
+                            <div
+                              key={item.id}
+                              className={`p-3 rounded-2xl border transition ${
+                                item.isChecked
+                                  ? 'bg-gray-50/70 border-gray-200 opacity-70'
+                                  : 'bg-white border-gray-200 shadow-xs'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                {/* Checkbox & Item Name */}
+                                <div
+                                  onClick={() => {
+                                    setShoppingItems(prev => prev.map(i => i.id === item.id ? { ...i, isChecked: !i.isChecked } : i));
+                                  }}
+                                  className="flex items-center gap-2.5 cursor-pointer flex-1"
+                                >
+                                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition ${
+                                    item.isChecked ? 'bg-[#626B49] border-[#626B49] text-white' : 'border-gray-300 bg-white'
+                                  }`}>
+                                    {item.isChecked && <Check className="w-3.5 h-3.5" />}
                                   </div>
-
-                                  {/* Quantity Stepper & Line Total */}
-                                  <div className="flex items-center gap-2">
-                                    <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
-                                      <button
-                                        onClick={() => updateItemQty(item.id, -0.5)}
-                                        className="w-5 h-5 rounded text-gray-600 hover:bg-gray-200 font-bold flex items-center justify-center text-xs"
-                                        title="إنقاص الكمية"
-                                      >
-                                        -
-                                      </button>
-                                      <span className="px-1.5 text-xs font-bold text-gray-800">
-                                        {item.quantity} {item.unit}
-                                      </span>
-                                      <button
-                                        onClick={() => updateItemQty(item.id, 0.5)}
-                                        className="w-5 h-5 rounded text-gray-600 hover:bg-gray-200 font-bold flex items-center justify-center text-xs"
-                                        title="زيادة الكمية"
-                                      >
-                                        +
-                                      </button>
-                                    </div>
-
-                                    {/* Line Total Display (Never NaN) */}
-                                    <div className="text-left min-w-[65px]">
-                                      {lineTotal !== null ? (
-                                        <span className="font-black text-xs text-[#626B49] block">
-                                          {Math.round(lineTotal)} ج.م
-                                        </span>
+                                  <div>
+                                    <span className={`text-xs font-bold ${item.isChecked ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                                      {item.name}
+                                    </span>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      {item.unitPrice !== null ? (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingPriceItem({
+                                              id: item.id,
+                                              name: item.name,
+                                              currentPrice: item.unitPrice !== null ? item.unitPrice.toString() : ''
+                                            });
+                                          }}
+                                          className="text-[10px] text-gray-500 hover:text-[#626B49] flex items-center gap-0.5"
+                                          title="اضغط لتعديل سعر الوحدة"
+                                        >
+                                          <span>سعر الوحدة: {item.unitPrice} ج.م</span>
+                                          <Edit3 className="w-2.5 h-2.5 text-gray-400" />
+                                        </button>
                                       ) : (
-                                        <span className="text-[10px] font-bold text-amber-700 bg-[#F7F0DE] px-1.5 py-0.5 rounded block">
-                                          غير مسعر
-                                        </span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingPriceItem({
+                                              id: item.id,
+                                              name: item.name,
+                                              currentPrice: ''
+                                            });
+                                          }}
+                                          className="text-[10px] text-amber-700 font-bold bg-[#F7F0DE] hover:bg-[#EFE5C8] px-1.5 py-0.5 rounded border border-[#E6D9B8] flex items-center gap-1"
+                                        >
+                                          <span>السعر غير محدد</span>
+                                          <span className="text-[#626B49] underline">حدد السعر</span>
+                                        </button>
                                       )}
                                     </div>
-
-                                    <button
-                                      onClick={() => setShoppingItems(prev => prev.filter(i => i.id !== item.id))}
-                                      className="text-gray-400 hover:text-red-600 p-1"
-                                      title="حذف"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
                                   </div>
                                 </div>
+
+                                {/* Quantity Stepper & Line Total */}
+                                <div className="flex items-center gap-2">
+                                  <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+                                    <button
+                                      onClick={() => updateItemQty(item.id, -0.5)}
+                                      className="w-5 h-5 rounded text-gray-600 hover:bg-gray-200 font-bold flex items-center justify-center text-xs"
+                                      title="إنقاص الكمية"
+                                    >
+                                      -
+                                    </button>
+                                    <span className="px-1.5 text-xs font-bold text-gray-800">
+                                      {item.quantity} {item.unit}
+                                    </span>
+                                    <button
+                                      onClick={() => updateItemQty(item.id, 0.5)}
+                                      className="w-5 h-5 rounded text-gray-600 hover:bg-gray-200 font-bold flex items-center justify-center text-xs"
+                                      title="زيادة الكمية"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+
+                                  {/* Line Total Display (Never NaN) */}
+                                  <div className="text-left min-w-[65px]">
+                                    {lineTotal !== null ? (
+                                      <span className="font-black text-xs text-[#626B49] block">
+                                        {Math.round(lineTotal)} ج.م
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold text-amber-700 bg-[#F7F0DE] px-1.5 py-0.5 rounded block">
+                                        غير مسعر
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <button
+                                    onClick={() => setShoppingItems(prev => prev.filter(i => i.id !== item.id))}
+                                    className="text-gray-400 hover:text-red-600 p-1"
+                                    title="حذف"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
-                            );
-                          })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* 3. مشاركة القائمة على واتساب */}
+                    <button
+                      type="button"
+                      onClick={handleShareShoppingWhatsApp}
+                      className="w-full min-h-[46px] bg-[#1E5631] hover:bg-[#2E7D32] text-white font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
+                      title="مشاركة الأصناف غير المشتراة عبر تطبيق واتساب"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      <span>مشاركة قائمة النواقص عبر واتساب</span>
+                    </button>
+
+                    {/* 4. روابط الطلب أونلاين (متاجر التوصيل) */}
+                    <div className="bg-[#F5F0E5]/90 p-3.5 rounded-2xl border border-[#E4DECF] shadow-sm space-y-2.5">
+                      <div className="flex items-center justify-between gap-2 border-b border-[#E4DECF] pb-2">
+                        <div className="flex items-center gap-1.5">
+                          <ShoppingCart className="w-4 h-4 text-[#1E5631] shrink-0" />
+                          <h3 className="text-xs font-extrabold text-[#1E5631]">روابط الطلب أونلاين (متاجر التوصيل)</h3>
                         </div>
-                      )}
+                        <span className="text-[10px] font-bold text-[#6E675A]">
+                          {shoppingItems.some(i => !i.isChecked)
+                            ? `${shoppingItems.filter(i => !i.isChecked).length} نواقص`
+                            : 'متاجر مصر'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {matchDealsForShoppingItems(shoppingItems.length).map(deal => {
+                          const hasMissing = shoppingItems.some(i => !i.isChecked);
+                          return (
+                            <a
+                              key={deal.id}
+                              href={deal.affiliateTrackingUrl || deal.officialUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="bg-white hover:border-[#1E5631] p-2.5 rounded-xl border border-[#E6DFCE] shadow-xs flex flex-col justify-between gap-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1E5631]"
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-extrabold text-[11px] text-gray-900 truncate">{deal.partnerName}</span>
+                                <ExternalLink className="w-3 h-3 text-[#1E5631] shrink-0" />
+                              </div>
+                              <span className="text-[10px] font-bold text-[#1E5631]">
+                                {hasMissing ? `اطلب من ${deal.shortName}` : `تصفح ${deal.shortName}`}
+                              </span>
+                            </a>
+                          );
+                        })}
+                      </div>
+
+                      <p className="text-[10px] text-[#6E675A] text-center leading-relaxed">
+                        روابط مباشرة للمواقع الرسمية للمتاجر — قد يحصل تطبيق تدبيرة على عمولة بسيطة لدعم استمرار التطوير المجاني.
+                      </p>
                     </div>
+                  </div>
                 </div>
               )}
 
@@ -3923,9 +4091,9 @@ export default function App() {
                 {([
                   { id: 'home', label: 'الرئيسية', Icon: Home },
                   { id: 'food', label: 'المطبخ', Icon: Utensils },
+                  { id: 'household', label: 'البيت', Icon: Users },
                   { id: 'saved', label: 'التسوق', Icon: ShoppingCart },
-                  { id: 'budget', label: 'الميزانية', Icon: Wallet },
-                  { id: 'household', label: 'البيت', Icon: Users }
+                  { id: 'budget', label: 'الميزانية', Icon: Wallet }
                 ] as const).map(({ id, label, Icon }) => (
                   <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id || (id === 'home' && activeTab === 'daily') ? 'page' : undefined}
                     className={activeTab === id || (id === 'home' && activeTab === 'daily') ? "flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[#5F7651] bg-[#EEF1E8] font-extrabold" : "flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[#999487]"}>
@@ -5190,6 +5358,11 @@ export default function App() {
         </div>
       )}
 
+      <ActiveAlarmOverlay
+        alarm={activeAlarm}
+        onDismiss={handleDismissActiveAlarm}
+        onSnooze={handleSnoozeActiveAlarm}
+      />
     </div>
   );
 }

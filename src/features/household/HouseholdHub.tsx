@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, BellOff, CalendarClock, CheckCircle2, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { Bell, BellOff, CalendarClock, CheckCircle2, Plus, Sparkles, Trash2, Volume2 } from 'lucide-react';
 import { householdTasksRepository } from './householdTaskRepository';
 import { sortHouseholdTasks, type HouseholdTask } from './householdTaskModels';
 import { savingsGoalsRepository } from '../savings/savingsRepository';
@@ -7,17 +7,29 @@ import { getSavingsProgress, type SavingsGoal } from '../savings/savingsModels';
 import { customRemindersRepository } from './customReminderRepository';
 import {
   REMINDER_LEAD_TIME_OPTIONS,
+  REMINDER_SOUND_OPTIONS,
   REMINDER_TITLE_SUGGESTIONS,
   computeReminderAlertDate,
   formatArabicShortDate,
   formatArabicTime12h,
   getLeadTimeLabel,
+  getReminderSoundOption,
+  resolveReminderSoundProfile,
   sortCustomReminders,
   stableNotificationId,
   type CustomReminder,
   type ReminderLeadMinutes,
+  type ReminderSoundProfile,
 } from './customReminderModels';
-import { getLocalNotificationService } from '../../services/localNotificationService';
+import {
+  getChannelIdForSoundProfile,
+  getLocalNotificationService,
+} from '../../services/localNotificationService';
+import {
+  isAlarmLoopActive,
+  previewReminderSound,
+  stopReminderSoundPreview,
+} from '../../services/reminderSoundPreview';
 
 const todayKey = () => {
   const now = new Date();
@@ -47,6 +59,8 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
   const [remDate, setRemDate] = useState(() => todayKey());
   const [remTime, setRemTime] = useState(() => defaultTimePlusHour());
   const [remLead, setRemLead] = useState<ReminderLeadMinutes>(5);
+  const [remSound, setRemSound] = useState<ReminderSoundProfile>('gentle');
+  const [isPreviewingSound, setIsPreviewingSound] = useState(false);
   const [remStatusMsg, setRemStatusMsg] = useState<string | null>(null);
 
   // Household Task Form State (with optional date/time & lead-time scheduling)
@@ -85,11 +99,15 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
       if (!r.enabled) continue;
       const alertDate = computeReminderAlertDate(r.date, r.time, r.leadMinutes);
       if (alertDate && alertDate.getTime() > now) {
+        const soundProfile = resolveReminderSoundProfile(r.soundProfile);
         void svc.scheduleOneOffNotification({
           id: r.notificationId,
           title: `تذكير: ${r.title}`,
           body: `الميعاد ${formatArabicTime12h(r.time)} (${getLeadTimeLabel(r.leadMinutes)})`,
           triggerAt: alertDate,
+          soundProfile,
+          channelId: getChannelIdForSoundProfile(soundProfile),
+          alarmTitle: r.title,
         });
       }
     }
@@ -102,12 +120,35 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
           title: `مهمة البيت: ${t.title}`,
           body: `موعدها الساعة ${formatArabicTime12h(t.dueTime)}`,
           triggerAt: alertDate,
+          soundProfile: 'gentle',
+          channelId: getChannelIdForSoundProfile('gentle'),
+          alarmTitle: t.title,
         });
       }
     }
+    return () => {
+      if (!isAlarmLoopActive()) {
+        stopReminderSoundPreview();
+      }
+    };
   }, []);
 
   const previewAlertDate = computeReminderAlertDate(remDate, remTime, remLead);
+  const selectedSoundOption = getReminderSoundOption(remSound);
+
+  const handlePreviewSound = async () => {
+    setIsPreviewingSound(true);
+    try {
+      const result = await previewReminderSound(remSound, remTitle);
+      onNotify?.(result.message);
+    } finally {
+      if (remSound === 'alarm') {
+        setIsPreviewingSound(isAlarmLoopActive());
+      } else {
+        setTimeout(() => setIsPreviewingSound(false), 950);
+      }
+    }
+  };
 
   const handleAddReminder = async () => {
     const title = remTitle.trim();
@@ -134,6 +175,7 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
       date: remDate,
       time: remTime,
       leadMinutes: remLead,
+      soundProfile: remSound,
       enabled: true,
       createdAt: new Date().toISOString(),
     };
@@ -147,10 +189,13 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
       title: `تذكير من تدبيرة: ${title} 🔔`,
       body: `الميعاد ${formatArabicTime12h(remTime)} — ${getLeadTimeLabel(remLead)}`,
       triggerAt: alertDate,
+      soundProfile: remSound,
+      channelId: getChannelIdForSoundProfile(remSound),
+      alarmTitle: title,
     });
     const alertText = `هيوصلك الإشعار ${formatArabicShortDate(alertDate)} الساعة ${formatArabicTime12h(alertDate)}`;
     setRemStatusMsg(`${result.message} (${alertText})`);
-    onNotify?.(result.scheduled ? `تم حفظ التنبيه! ${alertText}` : result.message);
+    onNotify?.(result.scheduled ? `تم حفظ التنبيه (${selectedSoundOption.label})! ${alertText}` : result.message);
   };
 
   const handleToggleReminder = async (reminder: CustomReminder) => {
@@ -162,11 +207,15 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
     if (nextEnabled) {
       const alertDate = computeReminderAlertDate(reminder.date, reminder.time, reminder.leadMinutes);
       if (alertDate && alertDate.getTime() > Date.now()) {
+        const soundProfile = resolveReminderSoundProfile(reminder.soundProfile);
         const res = await svc.scheduleOneOffNotification({
           id: reminder.notificationId,
           title: `تذكير من تدبيرة: ${reminder.title} 🔔`,
           body: `الميعاد ${formatArabicTime12h(reminder.time)} — ${getLeadTimeLabel(reminder.leadMinutes)}`,
           triggerAt: alertDate,
+          soundProfile,
+          channelId: getChannelIdForSoundProfile(soundProfile),
+          alarmTitle: reminder.title,
         });
         onNotify?.(res.message);
       } else {
@@ -320,7 +369,12 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
               <button
                 key={suggestion}
                 type="button"
-                onClick={() => setRemTitle(suggestion)}
+                onClick={() => {
+                  setRemTitle(suggestion);
+                  if (suggestion === 'أصحي جوزي من النوم') {
+                    setRemSound('alarm');
+                  }
+                }}
                 className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition ${
                   remTitle === suggestion
                     ? 'bg-[#1E5631] text-white border-[#1E5631]'
@@ -382,6 +436,51 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
             </select>
           </label>
 
+          {/* Sound Profile Selector + Preview */}
+          <div className="space-y-1.5 pt-0.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold text-gray-600">نوع صوت التنبيه</span>
+              <button
+                type="button"
+                onClick={() => void handlePreviewSound()}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-extrabold transition ${
+                  isPreviewingSound
+                    ? 'border-[#1E5631] bg-[#1E5631] text-white'
+                    : 'border-[#D4C7AE] bg-white hover:bg-[#FAF6EC] text-[#1E5631]'
+                }`}
+              >
+                <Volume2 className="w-3 h-3 shrink-0" />
+                <span>جرّب الصوت 🔊</span>
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="نوع صوت التنبيه">
+              {REMINDER_SOUND_OPTIONS.map(option => {
+                const isSelected = remSound === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={isSelected}
+                    onClick={() => setRemSound(option.value)}
+                    className={`rounded-xl border px-2 py-2 text-[11px] font-extrabold transition flex items-center justify-center gap-1 ${
+                      isSelected
+                        ? option.value === 'alarm'
+                          ? 'bg-[#FFF3E0] border-[#D97706] text-[#9A3412] shadow-xs'
+                          : option.value === 'vibrate'
+                            ? 'bg-[#EEF2F6] border-[#64748B] text-[#334155] shadow-xs'
+                            : 'bg-[#EEF6EE] border-[#1E5631] text-[#1E5631] shadow-xs'
+                        : 'bg-white border-[#DDD5C3] text-gray-600 hover:border-[#1E5631]/60'
+                    }`}
+                  >
+                    <span>{option.emoji}</span>
+                    <span>{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-gray-500">{selectedSoundOption.description}</p>
+          </div>
+
           {previewAlertDate && (
             <div className="rounded-lg bg-[#EEF6EE] border border-[#DCE5D3] px-2.5 py-1.5 text-[11px] text-[#1E5631] font-bold flex items-center gap-1.5">
               <CalendarClock className="w-3.5 h-3.5 shrink-0" />
@@ -422,6 +521,13 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
                 reminder.leadMinutes
               );
               const isPast = alertDate ? alertDate.getTime() <= Date.now() : false;
+              const soundOption = getReminderSoundOption(reminder.soundProfile);
+              const soundBadgeClass =
+                soundOption.value === 'alarm'
+                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  : soundOption.value === 'vibrate'
+                    ? 'bg-slate-100 text-slate-700 border-slate-200'
+                    : 'bg-[#EEF6EE] text-[#1E5631] border-[#DCE5D3]';
               return (
                 <div
                   key={reminder.id}
@@ -433,10 +539,15 @@ export function HouseholdHub({ onNotify }: HouseholdHubProps) {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <strong className="text-xs font-extrabold text-gray-900">
                           {reminder.title}
                         </strong>
+                        <span
+                          className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-bold ${soundBadgeClass}`}
+                        >
+                          {soundOption.badgeLabel}
+                        </span>
                         {isPast && reminder.enabled && (
                           <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
                             عدّى ميعاده

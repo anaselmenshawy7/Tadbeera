@@ -12,7 +12,7 @@ export type MealTypeFilter = 'all' | 'breakfast' | 'lunch' | 'dinner';
 export const PRIMARY_TABS: ReadonlyArray<{ id: ActiveTab; label: string }> = [
   { id: 'home', label: 'الرئيسية' },
   { id: 'food', label: 'المطبخ' },
+  { id: 'household', label: 'البيت' },
   { id: 'saved', label: 'التسوق' },
-  { id: 'budget', label: 'الميزانية' },
-  { id: 'household', label: 'البيت' }
+  { id: 'budget', label: 'الميزانية' }
 ];

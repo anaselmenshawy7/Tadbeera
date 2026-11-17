@@ -2,7 +2,12 @@ package com.tedbeera.egypt
 
 import android.Manifest
 import android.app.AlarmManager
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -81,6 +86,54 @@ class NotificationPermissionPlugin : Plugin() {
         } catch (error: Exception) {
             call.reject("تعذر فتح إعدادات المنبهات الدقيقة", error)
         }
+    }
+
+    @PluginMethod
+    fun ensureAlarmChannel(call: PluginCall) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val manager = context.getSystemService(NotificationManager::class.java)
+                val channelId = "tedbeera_alarm"
+                val existing = manager.getNotificationChannel(channelId)
+                if (existing != null && existing.audioAttributes?.usage != AudioAttributes.USAGE_ALARM) {
+                    try {
+                        manager.deleteNotificationChannel(channelId)
+                    } catch (_: Exception) {
+                        // Ignore if channel cannot be deleted while notifications are active
+                    }
+                }
+                val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                val audioAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+                val channel = NotificationChannel(
+                    channelId,
+                    "منبه تدبيرة القوي",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "منبه قوي بصوت المنبه الأساسي واهتزاز واضح حتى الإيقاف"
+                    enableVibration(true)
+                    vibrationPattern = longArrayOf(0L, 600L, 300L, 600L, 300L, 800L)
+                    enableLights(true)
+                    lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                    try {
+                        setBypassDnd(true)
+                    } catch (_: Exception) {
+                    }
+                    if (alarmUri != null) {
+                        setSound(alarmUri, audioAttributes)
+                    }
+                }
+                manager.createNotificationChannel(channel)
+            } catch (error: Exception) {
+                call.reject("تعذر تهيئة قناة المنبه القوي", error)
+                return
+            }
+        }
+        call.resolve(JSObject().put("created", true).put("channelId", "tedbeera_alarm"))
     }
 
     @PluginMethod

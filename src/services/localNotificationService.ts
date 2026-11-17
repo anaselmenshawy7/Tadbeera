@@ -1,5 +1,9 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { LocalNotifications } from '@capacitor/local-notifications';
+import { LocalNotifications, type Channel } from '@capacitor/local-notifications';
+import {
+  resolveReminderSoundProfile,
+  type ReminderSoundProfile,
+} from '../features/household/customReminderModels';
 
 interface NotificationPermissionPlugin {
   check(): Promise<{ granted: boolean }>;
@@ -7,6 +11,7 @@ interface NotificationPermissionPlugin {
   openSettings(): Promise<void>;
   checkExactAlarmPermission(): Promise<{ granted: boolean }>;
   openExactAlarmSettings(): Promise<{ granted: boolean }>;
+  ensureAlarmChannel(): Promise<{ created: boolean; channelId: string }>;
 }
 
 const NotificationPermission = registerPlugin<NotificationPermissionPlugin>('NotificationPermission');
@@ -36,6 +41,55 @@ export const LUNCH_REMINDER_ID = 102;
 export const DINNER_REMINDER_ID = 103;
 export const DAILY_REMINDER_CHANNEL_ID = 'tedbeera_meal_reminders';
 export const CUSTOM_REMINDER_CHANNEL_ID = 'tedbeera_custom_reminders';
+export const ALARM_REMINDER_CHANNEL_ID = 'tedbeera_alarm';
+export const GENTLE_REMINDER_CHANNEL_ID = 'tedbeera_gentle';
+export const VIBRATE_REMINDER_CHANNEL_ID = 'tedbeera_vibrate';
+export const ALARM_ACTION_TYPE_ID = 'TEDBEERA_ALARM_ACTIONS';
+export const ALARM_DISMISS_ACTION_ID = 'DISMISS_ALARM';
+
+export const CUSTOM_REMINDER_CHANNELS: ReadonlyArray<Channel> = [
+  {
+    id: ALARM_REMINDER_CHANNEL_ID,
+    name: 'منبه تدبيرة القوي',
+    description: 'تنبيهات عالية الأهمية مع صوت منبه قوي واهتزاز واضح',
+    importance: 5,
+    visibility: 1,
+    vibration: true,
+    lights: true,
+    lightColor: '#D97706',
+    sound: 'tedbeera_alarm.wav',
+  },
+  {
+    id: GENTLE_REMINDER_CHANNEL_ID,
+    name: 'تذكيرات تدبيرة الهادئة',
+    description: 'رنة تنبيه هادئة للمهام والمواعيد اليومية',
+    importance: 4,
+    visibility: 1,
+    vibration: true,
+  },
+  {
+    id: VIBRATE_REMINDER_CHANNEL_ID,
+    name: 'تنبيهات تدبيرة بالاهتزاز فقط',
+    description: 'تنبيه صامت بالاهتزاز فقط بدون صوت',
+    importance: 3,
+    visibility: 1,
+    vibration: true,
+    sound: 'tedbeera_silent.wav',
+  },
+];
+
+export function getChannelIdForSoundProfile(soundProfile: ReminderSoundProfile = 'gentle'): string {
+  switch (soundProfile) {
+    case 'alarm':
+      return ALARM_REMINDER_CHANNEL_ID;
+    case 'vibrate':
+      return VIBRATE_REMINDER_CHANNEL_ID;
+    case 'gentle':
+    default:
+      return GENTLE_REMINDER_CHANNEL_ID;
+  }
+}
+
 export const DEFAULT_REMINDER_HOUR = 8;
 export const DEFAULT_REMINDER_MINUTE = 0;
 export const DEFAULT_LUNCH_HOUR = 13;
@@ -61,6 +115,9 @@ export interface OneOffNotificationOptions {
   title: string;
   body: string;
   triggerAt: Date;
+  soundProfile?: ReminderSoundProfile;
+  channelId?: string;
+  alarmTitle?: string;
 }
 
 export interface OneOffNotificationResult {
@@ -79,6 +136,7 @@ export interface LocalNotificationService {
   sendTestNotification(): Promise<{ success: boolean; message: string }>;
   scheduleOneOffNotification(options: OneOffNotificationOptions): Promise<OneOffNotificationResult>;
   cancelOneOffNotification(id: number): Promise<void>;
+  dismissDeliveredNotification(id: number): Promise<void>;
   getStoredConfig(): LocalReminderConfig;
   saveStoredConfig(config: Partial<LocalReminderConfig>): void;
 }
@@ -361,8 +419,52 @@ class CapacitorLocalNotificationServiceImpl implements LocalNotificationService 
 
   private webTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
+  private async ensureCustomReminderChannels(): Promise<void> {
+    if (!this.isLocalNotificationsAvailable()) return;
+
+    let nativeAlarmChannelReady = false;
+    if (this.isPermissionPluginAvailable()) {
+      try {
+        await NotificationPermission.ensureAlarmChannel();
+        nativeAlarmChannelReady = true;
+      } catch {
+        nativeAlarmChannelReady = false;
+      }
+    }
+
+    for (const channel of CUSTOM_REMINDER_CHANNELS) {
+      if (nativeAlarmChannelReady && channel.id === ALARM_REMINDER_CHANNEL_ID) {
+        continue;
+      }
+      await LocalNotifications.createChannel(channel);
+    }
+
+    try {
+      await LocalNotifications.registerActionTypes({
+        types: [
+          {
+            id: ALARM_ACTION_TYPE_ID,
+            actions: [
+              {
+                id: ALARM_DISMISS_ACTION_ID,
+                title: 'إيقاف المنبه',
+                destructive: true,
+                foreground: true,
+              },
+            ],
+          },
+        ],
+      });
+    } catch {
+      // Ignore on environments that do not support action types
+    }
+  }
+
   async scheduleOneOffNotification(options: OneOffNotificationOptions): Promise<OneOffNotificationResult> {
     const { id, title, body, triggerAt } = options;
+    const soundProfile = resolveReminderSoundProfile(options.soundProfile);
+    const channelId = options.channelId || getChannelIdForSoundProfile(soundProfile);
+    const alarmTitle = options.alarmTitle || title;
     await this.cancelOneOffNotification(id);
 
     const delayMs = triggerAt.getTime() - Date.now();
@@ -387,21 +489,31 @@ class CapacitorLocalNotificationServiceImpl implements LocalNotificationService 
             };
           }
         }
-        await LocalNotifications.createChannel({
-          id: CUSTOM_REMINDER_CHANNEL_ID,
-          name: 'تذكيرات ومهام البيت',
-          description: 'تنبيهات تدبيرة المخصصة ومهام البيت',
-          importance: 4,
-          visibility: 1,
-        });
+        await this.ensureCustomReminderChannels();
         await LocalNotifications.schedule({
           notifications: [{
             id,
             title,
             body,
             schedule: { at: triggerAt, allowWhileIdle: true },
-            channelId: CUSTOM_REMINDER_CHANNEL_ID,
-            extra: { source: 'tadbeera_custom_reminder', reminderId: id },
+            channelId,
+            ...(soundProfile === 'alarm'
+              ? {
+                  foreground: true,
+                  ongoing: true,
+                  autoCancel: false,
+                  actionTypeId: ALARM_ACTION_TYPE_ID,
+                }
+              : soundProfile === 'vibrate'
+                ? { sound: 'tedbeera_silent.wav' }
+                : {}),
+            extra: {
+              source: 'tadbeera_custom_reminder',
+              reminderId: id,
+              soundProfile,
+              channelId,
+              alarmTitle,
+            },
           }],
         });
         return {
@@ -434,13 +546,18 @@ class CapacitorLocalNotificationServiceImpl implements LocalNotificationService 
         this.webTimers.delete(id);
         if (hasWebPermission && 'Notification' in window && window.Notification.permission === 'granted') {
           try {
-            new window.Notification(title, { body });
+            new window.Notification(title, {
+              body,
+              requireInteraction: soundProfile === 'alarm',
+            });
           } catch {
             // Fall through to in-app alert event
           }
         }
         window.dispatchEvent(
-          new CustomEvent('tadbeeraCustomReminderAlert', { detail: { id, title, body } })
+          new CustomEvent('tadbeeraCustomReminderAlert', {
+            detail: { id, title, body, soundProfile, channelId, alarmTitle },
+          })
         );
       }, delayMs);
       this.webTimers.set(id, timer);
@@ -466,6 +583,17 @@ class CapacitorLocalNotificationServiceImpl implements LocalNotificationService 
         await LocalNotifications.cancel({ notifications: [{ id }] });
       } catch {
         // Ignore if notification ID was already fired or absent
+      }
+    }
+  }
+
+  async dismissDeliveredNotification(id: number): Promise<void> {
+    await this.cancelOneOffNotification(id);
+    if (this.isLocalNotificationsAvailable()) {
+      try {
+        await LocalNotifications.removeDeliveredNotificationsById({ ids: [id] });
+      } catch {
+        // Ignore if already cleared
       }
     }
   }

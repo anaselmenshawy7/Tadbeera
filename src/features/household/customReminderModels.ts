@@ -1,5 +1,43 @@
 export type ReminderLeadMinutes = 0 | 5 | 15 | 30 | 60;
 
+export type ReminderSoundProfile = 'alarm' | 'gentle' | 'vibrate';
+
+export interface ReminderSoundOption {
+  value: ReminderSoundProfile;
+  channelId: 'tedbeera_alarm' | 'tedbeera_gentle' | 'tedbeera_vibrate';
+  label: string;
+  emoji: string;
+  badgeLabel: string;
+  description: string;
+}
+
+export const REMINDER_SOUND_OPTIONS: ReadonlyArray<ReminderSoundOption> = [
+  {
+    value: 'alarm',
+    channelId: 'tedbeera_alarm',
+    label: 'منبه قوي',
+    emoji: '🔔',
+    badgeLabel: '🔔 منبه قوي',
+    description: 'نغمة منبه واضحة واهتزاز قوي للصحيان والمواعيد المهمة',
+  },
+  {
+    value: 'gentle',
+    channelId: 'tedbeera_gentle',
+    label: 'رنة هادئة',
+    emoji: '🎵',
+    badgeLabel: '🎵 رنة هادئة',
+    description: 'رنة لطيفة لمهام البيت والمشاوير اليومية',
+  },
+  {
+    value: 'vibrate',
+    channelId: 'tedbeera_vibrate',
+    label: 'اهتزاز فقط',
+    emoji: '📳',
+    badgeLabel: '📳 اهتزاز فقط',
+    description: 'تنبيه صامت بالاهتزاز فقط بدون صوت',
+  },
+];
+
 export interface CustomReminder {
   id: string;
   notificationId: number;
@@ -7,8 +45,22 @@ export interface CustomReminder {
   date: string; // YYYY-MM-DD
   time: string; // HH:mm
   leadMinutes: ReminderLeadMinutes;
+  soundProfile?: ReminderSoundProfile;
   enabled: boolean;
   createdAt: string;
+}
+
+export function isReminderSoundProfile(value: unknown): value is ReminderSoundProfile {
+  return value === 'alarm' || value === 'gentle' || value === 'vibrate';
+}
+
+export function resolveReminderSoundProfile(value?: unknown): ReminderSoundProfile {
+  return isReminderSoundProfile(value) ? value : 'gentle';
+}
+
+export function getReminderSoundOption(profile?: unknown): ReminderSoundOption {
+  const resolved = resolveReminderSoundProfile(profile);
+  return REMINDER_SOUND_OPTIONS.find(opt => opt.value === resolved) || REMINDER_SOUND_OPTIONS[1];
 }
 
 export const REMINDER_LEAD_TIME_OPTIONS: ReadonlyArray<{ value: ReminderLeadMinutes; label: string }> = [
@@ -37,6 +89,7 @@ export function stableNotificationId(key: string): number {
 export function isCustomReminder(value: unknown): value is CustomReminder {
   if (!value || typeof value !== 'object') return false;
   const r = value as Partial<CustomReminder>;
+  const validSoundProfile = r.soundProfile === undefined || isReminderSoundProfile(r.soundProfile);
   return (
     typeof r.id === 'string' &&
     r.id.trim().length > 0 &&
@@ -51,6 +104,7 @@ export function isCustomReminder(value: unknown): value is CustomReminder {
     /^([01]\d|2[0-3]):[0-5]\d$/.test(r.time) &&
     typeof r.leadMinutes === 'number' &&
     [0, 5, 15, 30, 60].includes(r.leadMinutes) &&
+    validSoundProfile &&
     typeof r.enabled === 'boolean' &&
     typeof r.createdAt === 'string'
   );

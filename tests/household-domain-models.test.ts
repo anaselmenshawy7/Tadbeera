@@ -4,6 +4,12 @@ import { summarizeMonthlyFinance, isFinanceTransaction } from '../src/features/f
 import { getLowStockItems, getExpiringInventoryItems, isInventoryItem } from '../src/features/inventory/inventoryModels';
 import { sortHouseholdTasks, isHouseholdTask } from '../src/features/household/householdTaskModels';
 import { getSavingsProgress, isSavingsGoal } from '../src/features/savings/savingsModels';
+import {
+  REMINDER_SOUND_OPTIONS,
+  getReminderSoundOption,
+  isCustomReminder,
+  resolveReminderSoundProfile,
+} from '../src/features/household/customReminderModels';
 
 test('monthly finance summary ignores other months and computes balance', () => {
   const summary = summarizeMonthlyFinance([
@@ -50,3 +56,35 @@ test('savings progress is bounded and marks completed goals', () => {
   assert.deepEqual(getSavingsProgress(goal), { saved: 1000, remaining: 0, percentage: 100, isComplete: true });
   assert.equal(isFinanceTransaction({ id: 'x', type: 'expense', amount: -1, categoryId: 'x', description: '', date: '2026-10-01' }), false);
 });
+
+test('custom reminder sound profiles validate safely and keep legacy compatibility', () => {
+  assert.deepEqual(
+    REMINDER_SOUND_OPTIONS.map(o => [o.value, o.channelId]),
+    [
+      ['alarm', 'tedbeera_alarm'],
+      ['gentle', 'tedbeera_gentle'],
+      ['vibrate', 'tedbeera_vibrate'],
+    ]
+  );
+
+  const legacyReminder = {
+    id: 'rem-1',
+    notificationId: 1200,
+    title: 'أصحي جوزي من النوم',
+    date: '2026-11-20',
+    time: '06:30',
+    leadMinutes: 5,
+    enabled: true,
+    createdAt: '2026-11-17T10:00:00.000Z',
+  };
+  assert.equal(isCustomReminder(legacyReminder), true);
+  assert.equal(resolveReminderSoundProfile(undefined), 'gentle');
+  assert.equal(getReminderSoundOption(undefined).badgeLabel, '🎵 رنة هادئة');
+
+  assert.equal(isCustomReminder({ ...legacyReminder, soundProfile: 'alarm' }), true);
+  assert.equal(isCustomReminder({ ...legacyReminder, soundProfile: 'vibrate' }), true);
+  assert.equal(isCustomReminder({ ...legacyReminder, soundProfile: 'invalid_sound' }), false);
+  assert.equal(getReminderSoundOption('alarm').channelId, 'tedbeera_alarm');
+  assert.equal(getReminderSoundOption('vibrate').badgeLabel, '📳 اهتزاز فقط');
+});
+
