@@ -130,8 +130,14 @@ import { RecipeIllustration } from './components/RecipeIllustration';
 import { ShoppingTotalsSummary } from './features/shopping/ShoppingTotalsSummary';
 import { HomeInventorySection } from './features/inventory/HomeInventorySection';
 import { EgyptianRecipeSpeechPlayer, buildEgyptianRecipeSpeechSegments } from './features/recipes/recipeSpeech';
-import { AdMob, BannerAdPosition, BannerAdOptions } from '@capacitor-community/admob';
-import { ADMOB_CONFIG } from './config/admobConfig';
+import {
+  AdMob,
+  BannerAdOptions,
+  BannerAdPluginEvents,
+  BannerAdPosition,
+  BannerAdSize,
+} from '@capacitor-community/admob';
+import { ADMOB_CONFIG, ADMOB_TEST_MODE } from './config/admobConfig';
 // Online recipe discovery is intentionally mounted as its own focused kitchen sub-screen.
 // The dedicated online search always attempts remote recipe providers before local fallbacks.
 // Heavy feature screens are loaded on demand so the first app screen stays lighter.
@@ -758,6 +764,7 @@ export default function App() {
   // AdMob State & Policy Compliance Controls (Google Mobile Ads)
   type AdStatus = 'loaded' | 'loading' | 'failed' | 'disabled';
   const [adStatus, setAdStatus] = useState<AdStatus>('disabled');
+  const [nativeBannerHeight, setNativeBannerHeight] = useState<number>(60);
   const [isInterstitialEnabled, setIsInterstitialEnabled] = useState<boolean>(false); // Strictly disabled by default
   const [sessionInterstitialCount, setSessionInterstitialCount] = useState<number>(0);
   const [lastInterstitialTime, setLastInterstitialTime] = useState<number>(0);
@@ -901,26 +908,67 @@ export default function App() {
   useEffect(() => {
     if (!isNativeApp) return;
     let mounted = true;
+    const listenerHandles: Array<{ remove: () => Promise<void> }> = [];
+
     const initBanner = async () => {
       try {
+        setAdStatus('loading');
+
+        const loadedHandle = await AdMob.addListener(BannerAdPluginEvents.Loaded, () => {
+          if (!mounted) return;
+          console.info('AdMob banner loaded successfully:', {
+            adUnitId: ADMOB_CONFIG.bannerAdUnitId,
+            testMode: ADMOB_TEST_MODE,
+          });
+          setAdStatus('loaded');
+        });
+        listenerHandles.push(loadedHandle);
+
+        const failedHandle = await AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (error) => {
+          if (!mounted) return;
+          console.warn('AdMob banner FailedToLoad:', error);
+          setAdStatus('failed');
+        });
+        listenerHandles.push(failedHandle);
+
+        const sizeHandle = await AdMob.addListener(BannerAdPluginEvents.SizeChanged, (size) => {
+          if (!mounted) return;
+          if (typeof size?.height === 'number' && size.height > 0) {
+            setNativeBannerHeight(Math.ceil(size.height));
+          }
+        });
+        listenerHandles.push(sizeHandle);
+
+        if (!mounted) return;
+
         await AdMob.initialize({
+          initializeForTesting: ADMOB_TEST_MODE,
           testingDevices: ['EMULATOR'],
         });
         if (!mounted) return;
+
         const options: BannerAdOptions = {
           adId: ADMOB_CONFIG.bannerAdUnitId,
+          adSize: BannerAdSize.ADAPTIVE_BANNER,
           position: BannerAdPosition.BOTTOM_CENTER,
-          margin: 56, // avoids overlap with bottom navigation bar
-          isTesting: ADMOB_CONFIG.testing,
+          margin: 72, // Clears the ~69px bottom navigation bar cleanly without overlap
+          isTesting: ADMOB_TEST_MODE,
         };
         await AdMob.showBanner(options);
       } catch (err) {
         console.warn('AdMob banner initialization error:', err);
+        if (mounted) {
+          setAdStatus('failed');
+        }
       }
     };
+
     void initBanner();
     return () => {
       mounted = false;
+      listenerHandles.forEach(handle => {
+        void handle.remove().catch(() => {});
+      });
       if (isNativeApp) {
         void AdMob.hideBanner().catch(() => {});
       }
@@ -2601,7 +2649,7 @@ export default function App() {
         </header>
 
         {/* Scrollable Screen Content with shared layout clearance ensuring 70-90px breathing room */}
-        <div className={`tadbeera-screen-content flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 bg-[#FFF8FA] [&>*]:max-w-2xl [&>*]:mx-auto [&>*]:w-full ${isNativeApp ? "pb-[calc(7.5rem+env(safe-area-inset-bottom))]" : "pb-[calc(1.5rem+env(safe-area-inset-bottom))]"}`}>
+        <div className={`tadbeera-screen-content flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 bg-[#FFF8FA] [&>*]:max-w-2xl [&>*]:mx-auto [&>*]:w-full ${isNativeApp && (adStatus === 'loaded' || adStatus === 'loading') ? "pb-[calc(2rem+env(safe-area-inset-bottom))]" : isNativeApp ? "pb-[calc(4.5rem+env(safe-area-inset-bottom))]" : "pb-[calc(1.5rem+env(safe-area-inset-bottom))]"}`}>
 
 
               {activeTab === 'home' && (
@@ -4448,68 +4496,81 @@ export default function App() {
             {/* ======================================================== */}
             {/* GOOGLE ADMOB BANNER (Dedicated Container Above Bottom Nav) */}
             {/* ======================================================== */}
-            <div
-              className={`transition-all duration-300 ease-in-out border-t border-[#F3DCE2] bg-white shrink-0 ${
-                adStatus === 'failed' || adStatus === 'disabled'
-                  ? 'h-0 py-0 border-transparent opacity-0 overflow-hidden'
-                  : 'h-[72px] py-1 px-3 flex flex-col justify-center'
-              }`}
-            >
-              <div className="w-full max-w-2xl mx-auto">
-                {/* Policy Header Bar: Clear 'إعلان' Tag & Non-Deceptive Separation */}
-                <div className="flex items-center justify-between text-[10px] pb-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="bg-[#FADDE4] text-[#C96D84] font-bold px-1.5 py-0.2 rounded text-[9px]">
-                      إعلان
-                    </span>
-                    <span className="text-[10px] text-[#8E757C] font-medium truncate max-w-[190px]">
-                      {IS_DEV ? 'AdMob Test • 320x50' : 'Google AdMob'}
-                    </span>
+            {isNativeApp ? (
+              <div
+                aria-hidden="true"
+                className="transition-all duration-300 ease-in-out shrink-0 bg-[#FFF8FA] overflow-hidden"
+                style={{
+                  height:
+                    adStatus === 'failed' || adStatus === 'disabled'
+                      ? '0px'
+                      : `${Math.max(56, nativeBannerHeight) + 4}px`,
+                }}
+              />
+            ) : (
+              <div
+                className={`transition-all duration-300 ease-in-out border-t border-[#F3DCE2] bg-white shrink-0 ${
+                  adStatus === 'failed' || adStatus === 'disabled'
+                    ? 'h-0 py-0 border-transparent opacity-0 overflow-hidden'
+                    : 'h-[72px] py-1 px-3 flex flex-col justify-center'
+                }`}
+              >
+                <div className="w-full max-w-2xl mx-auto">
+                  {/* Policy Header Bar: Clear 'إعلان' Tag & Non-Deceptive Separation */}
+                  <div className="flex items-center justify-between text-[10px] pb-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="bg-[#FADDE4] text-[#C96D84] font-bold px-1.5 py-0.2 rounded text-[9px]">
+                        إعلان
+                      </span>
+                      <span className="text-[10px] text-[#8E757C] font-medium truncate max-w-[190px]">
+                        {IS_DEV ? 'AdMob Test • 320x50' : 'Google AdMob'}
+                      </span>
+                    </div>
+                    {IS_DEV && (
+                      <button
+                        onClick={() => setIsAdControlsOpen(true)}
+                        className="text-[9px] text-[#C96D84] font-bold hover:underline"
+                      >
+                        اختبار الحالة ⚙️
+                      </button>
+                    )}
                   </div>
-                  {IS_DEV && (
-                    <button
-                      onClick={() => setIsAdControlsOpen(true)}
-                      className="text-[9px] text-[#C96D84] font-bold hover:underline"
-                    >
-                      اختبار الحالة ⚙️
-                    </button>
-                  )}
-                </div>
 
-                {/* Banner Area (Fixed 50px Height Reservation) */}
-                <div className="h-[50px] w-full rounded-lg overflow-hidden relative">
-                  {adStatus === 'loaded' && (
-                    <div className="h-full w-full bg-[#FFF8FA] border border-[#F3DCE2] rounded-lg flex items-center justify-between px-3 text-xs select-none shadow-inner">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-md bg-[#D47E93] text-white font-black text-[10px] flex items-center justify-center shrink-0">
-                          Ad
+                  {/* Banner Area (Fixed 50px Height Reservation) */}
+                  <div className="h-[50px] w-full rounded-lg overflow-hidden relative">
+                    {adStatus === 'loaded' && (
+                      <div className="h-full w-full bg-[#FFF8FA] border border-[#F3DCE2] rounded-lg flex items-center justify-between px-3 text-xs select-none shadow-inner">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-md bg-[#D47E93] text-white font-black text-[10px] flex items-center justify-center shrink-0">
+                            Ad
+                          </div>
+                          <div>
+                            <span className="font-extrabold text-[#4A353B] block leading-tight text-[11px]">
+                              Google AdMob • Test Ad
+                            </span>
+                            <span className="text-[10px] text-[#8E757C] block leading-tight">
+                              تدبيرة مصر: وفّر في ميزانية بيتك مع بدائل الأكل الذكية
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <span className="font-extrabold text-[#4A353B] block leading-tight text-[11px]">
-                            Google AdMob • Test Ad
-                          </span>
-                          <span className="text-[10px] text-[#8E757C] block leading-tight">
-                            تدبيرة مصر: وفّر في ميزانية بيتك مع بدائل الأكل الذكية
-                          </span>
-                        </div>
+                        <span className="text-[9px] font-bold bg-[#FADDE4] text-[#C96D84] px-2 py-0.5 rounded-full shrink-0">
+                          Sample Unit
+                        </span>
                       </div>
-                      <span className="text-[9px] font-bold bg-[#FADDE4] text-[#C96D84] px-2 py-0.5 rounded-full shrink-0">
-                        Sample Unit
-                      </span>
-                    </div>
-                  )}
+                    )}
 
-                  {adStatus === 'loading' && (
-                    <div className="h-full w-full bg-[#FFF8FA] border border-dashed border-[#F3DCE2] rounded-lg flex items-center justify-center gap-2 px-3 text-xs animate-pulse">
-                      <div className="w-4 h-4 border-2 border-[#D47E93] border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-[11px] text-[#8E757C] font-medium">
-                        جارِ حجز المساحة وتحميل إعلان AdMob...
-                      </span>
-                    </div>
-                  )}
+                    {adStatus === 'loading' && (
+                      <div className="h-full w-full bg-[#FFF8FA] border border-dashed border-[#F3DCE2] rounded-lg flex items-center justify-center gap-2 px-3 text-xs animate-pulse">
+                        <div className="w-4 h-4 border-2 border-[#D47E93] border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-[11px] text-[#8E757C] font-medium">
+                          جارِ حجز المساحة وتحميل إعلان AdMob...
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             <nav className="tadbeera-bottom-nav bg-[#FFF8FA] border-t border-[#F3DCE2] pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shrink-0 shadow-[0_-5px_20px_rgba(74,53,59,0.06)]" aria-label="التنقل الرئيسي">
               <div className="w-full max-w-2xl mx-auto px-1.5 grid grid-cols-5">

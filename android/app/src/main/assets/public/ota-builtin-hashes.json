@@ -1,64 +1,48 @@
 {
   "files": {
     "apple-touch-icon.png": {
-      "sha256": "a1111b2ec08a593430e8d9dfc123ac7bf251eccda0d45a5d7cbbc8eb0af22d0c",
-      "size": 39800
+      "sha256": "bd1bb434e0ef258fb626407867c207df5ebc73a9ce0c28fec033638fc154c00f",
+      "size": 123720
     },
-    "assets/HouseholdHub-A1UL1EwI.js": {
-      "sha256": "fd6bb2ef69126dc1c219786ef64e4ffabf6498e99145337c73ca917182101a35",
-      "size": 20219
+    "assets/HouseholdHub-JP3a-8dZ.js": {
+      "sha256": "8e88a486fd0490ca252637cef71a56d19823b76ac6c304a771ccca5d76468963",
+      "size": 32963
     },
-    "assets/IngredientRecipeFinder-D9jEbQ2H.js": {
-      "sha256": "016979bd6ba57d6a76f068be69577437c58e8da3d6f49f7cbb910bb756ecda6a",
-      "size": 24893
+    "assets/IngredientRecipeFinder-3tD1Npt2.js": {
+      "sha256": "272c09f0119b87bdb4ba8f10a4d45e8bfa95b656f4e7a06425cbfe3fdd81ebb0",
+      "size": 28295
     },
-    "assets/OnlineRecipeSearch-B04BeMO_.js": {
-      "sha256": "f4f22ddbad6e97f97b666e2aa648ea840955a95e17bf8727b888b21f30dc0e61",
-      "size": 69858
+    "assets/OnlineRecipeSearch-CkniFzik.js": {
+      "sha256": "167699b98a34c32aee9e84c27991ceab300a12210d5f9bfc0ba3e3a350d035e0",
+      "size": 73156
     },
-    "assets/aistudio/launchericon-144x144_b3711091.png": {
-      "sha256": "b3711091b0929f36712aa61781460b97b491cb06b940437445bc86b3c1deafa1",
-      "size": 25031
+    "assets/aistudio/Screenshot_2026-11-17-23-11-41-373_com.android.chrome_a5b0b0b7.jpg": {
+      "sha256": "a5b0b0b75a37b43b5f902a962b5129734d90130068ed2bbeada00f8f66c97313",
+      "size": 507597
     },
-    "assets/aistudio/launchericon-192x192_a1111b2e.png": {
-      "sha256": "a1111b2ec08a593430e8d9dfc123ac7bf251eccda0d45a5d7cbbc8eb0af22d0c",
-      "size": 39800
+    "assets/aistudio/a_clean_glossy_modern_app_icon_design_in_a_soft_2efdb44d.png": {
+      "sha256": "2efdb44d9f54a0edd1e4bf8361ba33baef20597f8c476be5ff46037200f57aa4",
+      "size": 1746865
     },
-    "assets/aistudio/launchericon-48x48_08576b00.png": {
-      "sha256": "08576b00fbf537c52aaf9a7692bf8896ecd72c40ced1cf7f70abe7a7874cc34c",
-      "size": 4171
+    "assets/index-DNQNWqMc.css": {
+      "sha256": "5ea2aa5d423abdfd4aa0c76567cc3801c84376b6c8d928d50c2c03e7d52ea67f",
+      "size": 70130
     },
-    "assets/aistudio/launchericon-512x512_fdb81f54.png": {
-      "sha256": "fdb81f54b6be1d08d34dc371da5236861d6e2c607706efb978e32259c68bf144",
-      "size": 213207
+    "assets/index-p7_TrRuA.js": {
+      "sha256": "b5e8ba675b51ec95c2badf8c7b8c6e30997d2ca1c23fd0b7e7fcb1552ad53e3a",
+      "size": 905569
     },
-    "assets/aistudio/launchericon-72x72_e4abd8ef.png": {
-      "sha256": "e4abd8ef50ab2f483065173de86db28d786549dc93b8e9b56793cd30aa204342",
-      "size": 8179
-    },
-    "assets/aistudio/launchericon-96x96_4d503cd4.png": {
-      "sha256": "4d503cd49c950cb406766c5d6e7c8959bd0f506d972480eb3b5c57b110f0a534",
-      "size": 13026
-    },
-    "assets/index--k2gWiz5.css": {
-      "sha256": "3b213ca90f72b80edcdf9dd1d78cf2e2158860e23144267961bc4388774a49af",
-      "size": 68890
-    },
-    "assets/index-DcVpmafN.js": {
-      "sha256": "fee5d7e9e0070ceb545732e3330414d604c081475e73c070f446f5bb404ccdb1",
-      "size": 771023
-    },
-    "assets/jsx-dev-runtime-D-PzxhQO.js": {
-      "sha256": "d1653f3ae5e9750ca199d70e731c292988fd694587013520e0f86af7326631bf",
-      "size": 26755
-    },
-    "assets/web-DcpDovtx.js": {
-      "sha256": "5c12108897f307bfca8f34100b3805b3bf29e5e2488af2bd92614a9b7b1b08ab",
+    "assets/web-BX13Z1Q-.js": {
+      "sha256": "7ed46a148045767f23949b7ec88733f95cb4fa207dea9af3eb8b8366c898c073",
       "size": 4438
     },
-    "assets/web-TvZfRmH2.js": {
-      "sha256": "ff70be040e45b29f0eac6fe84f48b8c6d9dff11e9292fc6229c33859e135fb97",
+    "assets/web-CGkmAYAi.js": {
+      "sha256": "d555e9779ee53479472fb78845667232b0f4582ac1cee82030ecd9c429304981",
       "size": 5090
+    },
+    "assets/web-hLgHy90O.js": {
+      "sha256": "e836bb4bea3eae2349a20ee147a53acc84e18a0c15767f6c3a0bad0bc61f4b88",
+      "size": 2547
     },
     "cordova.js": {
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -69,8 +53,20 @@
       "size": 0
     },
     "favicon.png": {
-      "sha256": "08576b00fbf537c52aaf9a7692bf8896ecd72c40ced1cf7f70abe7a7874cc34c",
-      "size": 4171
+      "sha256": "a10a762bb9c0bf705fff0b6fefaed161f51cd364e61b050701efb3cd76948558",
+      "size": 10869
+    },
+    "icon-192.png": {
+      "sha256": "e0742cfe97175b73e9226ef52a1962933d42232fab48aac1dab687b2149eb22a",
+      "size": 66580
+    },
+    "icon-512.png": {
+      "sha256": "334afb3a50ec09b04ba56c1c3ebbfa30a7d916364bf180f0480d3fd8728403d9",
+      "size": 358774
+    },
+    "icon-maskable-512.png": {
+      "sha256": "07310b7e638f685cc54c8cb8e641c269d72fea574d07bae4d0af49a7adde7a98",
+      "size": 752208
     },
     "images/recipes/README.md": {
       "sha256": "d97f9844124c493274acd9ea2a8063b0c131c97cb1a6dad3a100ded638837fcc",
@@ -85,28 +81,20 @@
       "size": 484717
     },
     "index.html": {
-      "sha256": "d9dae047d44200ad37677f2d039094dc8a4770b4a02fbb1b74ce6b4e135d3000",
-      "size": 2393
+      "sha256": "80dfee53e21e12d69e3f68af38e1330a7b8d981f2e6e3e252280ad87e951d894",
+      "size": 2222
     },
     "manifest.json": {
-      "sha256": "c9b88830eb90834f7817bf4bdf90294a0bcb120e610c6e8ed2196845865b744d",
-      "size": 1715
+      "sha256": "7dcd1dfa9df2d3d6b725ea81d785f13a9437a4ca1af48220392d658b7a931d6f",
+      "size": 1034
     },
     "manifest.webmanifest": {
-      "sha256": "f11874afc090c9ab8787a9cdc54251872838f6e5914ef7144b8e0d77576f4c66",
-      "size": 1138
-    },
-    "pwa-192x192.png": {
-      "sha256": "a1111b2ec08a593430e8d9dfc123ac7bf251eccda0d45a5d7cbbc8eb0af22d0c",
-      "size": 39800
-    },
-    "pwa-512x512.png": {
-      "sha256": "fdb81f54b6be1d08d34dc371da5236861d6e2c607706efb978e32259c68bf144",
-      "size": 213207
+      "sha256": "3fbcbf44c03f975c0d47fb7f8cbbc5b5360b1cb450941a796ec6e2daf11c784e",
+      "size": 785
     },
     "sw.js": {
-      "sha256": "fba28a351519072d935639cb82dca31e0a2f903ec5e8f420fb2e7906224d96c7",
-      "size": 4788
+      "sha256": "367e63fe499897e3b915a2320a5b36749320ed8f3bb368e26f3f43de9e8db475",
+      "size": 4314
     },
     "workbox-afac4cd2.js": {
       "sha256": "eacbe6e43e5f9e235bf460631a1098df7866e61b0fef1ebaf9bb0089cc98aa7d",

@@ -78,58 +78,49 @@ define(['./workbox-afac4cd2'], (function (workbox) { 'use strict';
    */
   workbox.precacheAndRoute([{
     "url": "index.html",
-    "revision": "f3945bb4c1a78cb615cc8241f5e7e192"
+    "revision": "ddc38b42af245de696bf22327b34562e"
   }, {
-    "url": "assets/web-TvZfRmH2.js",
+    "url": "assets/web-hLgHy90O.js",
     "revision": null
   }, {
-    "url": "assets/web-DcpDovtx.js",
+    "url": "assets/web-CGkmAYAi.js",
     "revision": null
   }, {
-    "url": "assets/jsx-dev-runtime-D-PzxhQO.js",
+    "url": "assets/web-BX13Z1Q-.js",
     "revision": null
   }, {
-    "url": "assets/index-DcVpmafN.js",
+    "url": "assets/index-p7_TrRuA.js",
     "revision": null
   }, {
-    "url": "assets/index--k2gWiz5.css",
+    "url": "assets/index-DNQNWqMc.css",
     "revision": null
   }, {
-    "url": "assets/OnlineRecipeSearch-B04BeMO_.js",
+    "url": "assets/OnlineRecipeSearch-CkniFzik.js",
     "revision": null
   }, {
-    "url": "assets/IngredientRecipeFinder-D9jEbQ2H.js",
+    "url": "assets/IngredientRecipeFinder-3tD1Npt2.js",
     "revision": null
   }, {
-    "url": "assets/HouseholdHub-A1UL1EwI.js",
+    "url": "assets/HouseholdHub-JP3a-8dZ.js",
     "revision": null
   }, {
     "url": "apple-touch-icon.png",
-    "revision": "08ca7a7de071c329f5d458b40e3addff"
+    "revision": "d0584036cc7577e7a228090893882e15"
   }, {
     "url": "favicon.png",
-    "revision": "e5a0162c98c1ba35821a54649f5d50d2"
+    "revision": "6f5e9a5008045e90d10d7f6812790e29"
   }, {
-    "url": "assets/aistudio/launchericon-144x144_b3711091.png",
-    "revision": "8b8ef9c782daec07bc228fdd8fbbb430"
+    "url": "icon-192.png",
+    "revision": "5f7a90d53432d2c6cfc0c384c81e3c91"
   }, {
-    "url": "assets/aistudio/launchericon-192x192_a1111b2e.png",
-    "revision": "08ca7a7de071c329f5d458b40e3addff"
+    "url": "icon-512.png",
+    "revision": "af1c225f494fc648dc18905a5f116ed6"
   }, {
-    "url": "assets/aistudio/launchericon-48x48_08576b00.png",
-    "revision": "e5a0162c98c1ba35821a54649f5d50d2"
-  }, {
-    "url": "assets/aistudio/launchericon-512x512_fdb81f54.png",
-    "revision": "5c50e5ba1ad4b11cb2202dd2b2d4c2e4"
-  }, {
-    "url": "assets/aistudio/launchericon-72x72_e4abd8ef.png",
-    "revision": "04769d682c290f9746bc8186cd4ac4b0"
-  }, {
-    "url": "assets/aistudio/launchericon-96x96_4d503cd4.png",
-    "revision": "fba9f6d7654a375d6b9276c54becf181"
+    "url": "icon-maskable-512.png",
+    "revision": "4ccdcd625440cb2d66486eb94c5239e9"
   }, {
     "url": "manifest.webmanifest",
-    "revision": "6b1e8aa8ea2baf4e17a9eb097ce28885"
+    "revision": "a4a4493fc9f7d7529542f30b2173ce53"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html")));
