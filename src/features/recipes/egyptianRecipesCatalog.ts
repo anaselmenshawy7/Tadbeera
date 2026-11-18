@@ -84,7 +84,7 @@ const r = (
   pageId: number,
   cuisine: CuisineTier,
   title: string,
-  servings: number,
+  _servings: number,
   terms: string[],
   ingredients: string,
   steps: string[],
@@ -95,11 +95,11 @@ const r = (
   ingredientsText: ingredients,
   recipe: {
     title,
-    servings,
+    servings: 4,
     pageId,
     cuisine,
     url: 'https://www.themealdb.com/',
-    extract: `المكونات (${servings} أفراد): ${ingredients}\n\nطريقة التحضير:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
+    extract: `المكونات (4 أفراد): ${ingredients}\n\nطريقة التحضير:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`,
   },
 });
 

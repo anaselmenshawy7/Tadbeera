@@ -7,6 +7,8 @@ import {
   Clock,
   Mic,
   MicOff,
+  Minus,
+  Plus,
   RefreshCw,
   Search,
   Sparkles,
@@ -17,12 +19,21 @@ import {
 } from 'lucide-react';
 import { EgyptianRecipeSpeechPlayer, buildEgyptianRecipeSpeechSegments } from './recipeSpeech';
 import {
+  buildRecipeExtractText,
   formatCuisineLabel,
   formatStructuredIngredientLine,
   validateAndNormalizeGeminiRecipe,
   type StructuredIngredient,
   type ValidatedAiRecipe,
 } from './recipeSchema';
+import {
+  BASE_RECIPE_SERVINGS,
+  MAX_RECIPE_SERVINGS,
+  MIN_RECIPE_SERVINGS,
+  clampRecipeServings,
+  scaleArabicIngredientLine,
+  scaleStructuredIngredient,
+} from './recipeScaling';
 import {
   extractMeaningfulArabicQueryTokens,
   normalizeArabicSearchTerm,
@@ -65,9 +76,11 @@ export type OnlineRecipe = {
   title: string;
   dishName?: string;
   servings: number;
+  baseServings?: number;
   pageId: number;
   url: string;
   extract: string;
+  baseExtract?: string;
   cuisine?: CuisineTier;
   cuisineName?: string;
   originCountryCode?: string;
@@ -78,6 +91,7 @@ export type OnlineRecipe = {
   cookTimeMinutes?: number;
   totalTimeMinutes?: number;
   ingredients?: StructuredIngredient[];
+  baseIngredients?: StructuredIngredient[];
   steps?: string[];
   tips?: string[];
   isAiGenerated?: boolean;
@@ -227,7 +241,12 @@ export function scaleMeasure(measure: string, familySize: number, baseServings =
     }, 0);
   if (!Number.isFinite(amount) || amount <= 0) return measure;
   return (
-    (Math.round((amount * Math.max(1, Math.min(30, Math.round(familySize))) / baseServings) * 100) / 100).toString() +
+    (
+      Math.round(
+        (amount * Math.max(MIN_RECIPE_SERVINGS, Math.min(MAX_RECIPE_SERVINGS, Math.round(familySize))) / baseServings) *
+          100
+      ) / 100
+    ).toString() +
     ' ' +
     match[2].trim()
   );
@@ -248,9 +267,11 @@ export function aiRecipeToOnlineRecipe(aiRecipe: ValidatedAiRecipe): OnlineRecip
     title: aiRecipe.dishName,
     dishName: aiRecipe.dishName,
     servings: aiRecipe.servings,
+    baseServings: aiRecipe.servings,
     pageId: stableRecipeId(`${aiRecipe.dishName}::${aiRecipe.cuisineName}`),
     url: '',
     extract: aiRecipe.extract,
+    baseExtract: aiRecipe.extract,
     cuisineName: aiRecipe.cuisineName,
     originCountryCode: aiRecipe.originCountryCode,
     countryFlag: aiRecipe.countryFlag,
@@ -260,6 +281,7 @@ export function aiRecipeToOnlineRecipe(aiRecipe: ValidatedAiRecipe): OnlineRecip
     cookTimeMinutes: aiRecipe.cookTimeMinutes,
     totalTimeMinutes: aiRecipe.totalTimeMinutes,
     ingredients: aiRecipe.ingredients,
+    baseIngredients: aiRecipe.ingredients,
     steps: aiRecipe.steps,
     tips: aiRecipe.tips,
     isAiGenerated: true,
@@ -479,24 +501,104 @@ function parseLegacyExtractSections(extract: string): { ingredients: string[]; s
   return { ingredients, steps, tips };
 }
 
-export function getRecipeDisplaySections(recipe: OnlineRecipe): {
+export function getRecipeDisplaySections(
+  recipe: OnlineRecipe,
+  targetServings?: number
+): {
   ingredients: string[];
   steps: string[];
   tips: string[];
 } {
+  const baseServings = recipe.baseServings || recipe.servings || BASE_RECIPE_SERVINGS;
+  const effectiveServings =
+    typeof targetServings === 'number' && Number.isFinite(targetServings)
+      ? clampRecipeServings(targetServings)
+      : recipe.servings || BASE_RECIPE_SERVINGS;
+
+  const sourceIngredients =
+    Array.isArray(recipe.baseIngredients) && recipe.baseIngredients.length > 0
+      ? recipe.baseIngredients
+      : recipe.ingredients;
+
   if (
-    Array.isArray(recipe.ingredients) &&
-    recipe.ingredients.length > 0 &&
+    Array.isArray(sourceIngredients) &&
+    sourceIngredients.length > 0 &&
     Array.isArray(recipe.steps) &&
     recipe.steps.length > 0
   ) {
+    const scaledIngredients =
+      effectiveServings === baseServings && !recipe.baseIngredients
+        ? sourceIngredients
+        : sourceIngredients.map(item => scaleStructuredIngredient(item, effectiveServings, baseServings));
     return {
-      ingredients: recipe.ingredients.map(formatStructuredIngredientLine),
+      ingredients: scaledIngredients.map(formatStructuredIngredientLine),
       steps: recipe.steps,
       tips: Array.isArray(recipe.tips) ? recipe.tips : [],
     };
   }
-  return parseLegacyExtractSections(recipe.extract || '');
+
+  const rawExtract = recipe.baseExtract || recipe.extract || '';
+  const parsed = parseLegacyExtractSections(rawExtract);
+  const scaledLegacyIngredients =
+    effectiveServings === baseServings
+      ? parsed.ingredients
+      : parsed.ingredients.map(line => scaleArabicIngredientLine(line, effectiveServings, baseServings));
+  return {
+    ingredients: scaledLegacyIngredients,
+    steps: parsed.steps,
+    tips: parsed.tips,
+  };
+}
+
+export function scaleOnlineRecipeForServings(
+  recipe: OnlineRecipe,
+  targetServings: number
+): OnlineRecipe {
+  const safeTarget = clampRecipeServings(targetServings);
+  const baseServings = recipe.baseServings || recipe.servings || BASE_RECIPE_SERVINGS;
+  const baseIngredients =
+    Array.isArray(recipe.baseIngredients) && recipe.baseIngredients.length > 0
+      ? recipe.baseIngredients
+      : Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0
+      ? recipe.ingredients
+      : undefined;
+  const baseExtract = recipe.baseExtract || recipe.extract;
+
+  const scaledStructured = baseIngredients
+    ? baseIngredients.map(item => scaleStructuredIngredient(item, safeTarget, baseServings))
+    : undefined;
+
+  const sections = getRecipeDisplaySections(
+    {
+      ...recipe,
+      baseServings,
+      baseIngredients,
+      baseExtract,
+    },
+    safeTarget
+  );
+
+  const scaledExtract =
+    scaledStructured && Array.isArray(recipe.steps) && recipe.steps.length > 0
+      ? buildRecipeExtractText({
+          servings: safeTarget,
+          ingredients: scaledStructured,
+          steps: recipe.steps,
+          tips: Array.isArray(recipe.tips) ? recipe.tips : [],
+        })
+      : `المكونات (${safeTarget} أفراد):\n${sections.ingredients.map(i => `• ${i}`).join('\n')}\n\nطريقة التحضير:\n${sections.steps.map((s, idx) => `${idx + 1}. ${s}`).join('\n')}${
+          sections.tips.length > 0 ? `\n\nنصائح لنجاح الوصفة:\n${sections.tips.map(t => `• ${t}`).join('\n')}` : ''
+        }`;
+
+  return {
+    ...recipe,
+    servings: safeTarget,
+    baseServings,
+    ingredients: scaledStructured,
+    baseIngredients,
+    extract: scaledExtract,
+    baseExtract,
+  };
 }
 
 export function getRecipeOriginBadge(recipe: OnlineRecipe): { label: string; className: string } {
@@ -785,6 +887,89 @@ export async function resolveOnlineOrOfflineRecipe(
   }
 }
 
+function ServingsStepperControl({
+  value,
+  onChange,
+  ariaLabelPrefix = 'عدد الأفراد',
+}: {
+  value: number;
+  onChange: (next: number) => void;
+  ariaLabelPrefix?: string;
+}) {
+  const [draft, setDraft] = useState<string>(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const commitValue = (raw: string) => {
+    const cleaned = raw.replace(/[٠-٩]/g, ch => String(ch.charCodeAt(0) - 0x0660)).replace(/[^\d]/g, '');
+    if (!cleaned) {
+      setDraft(String(value));
+      return;
+    }
+    const parsed = clampRecipeServings(Number(cleaned), value);
+    setDraft(String(parsed));
+    if (parsed !== value) {
+      onChange(parsed);
+    }
+  };
+
+  return (
+    <div
+      className="inline-flex items-center gap-1 rounded-2xl border border-[#E8A8B7]/75 bg-[#FFF8FA] p-1 shadow-2xs"
+      role="group"
+      aria-label={ariaLabelPrefix}
+    >
+      <button
+        type="button"
+        onClick={() => onChange(clampRecipeServings(value - 1))}
+        disabled={value <= MIN_RECIPE_SERVINGS}
+        aria-label="تقليل عدد الأفراد"
+        className="clay-tactile flex h-8 w-8 items-center justify-center rounded-xl bg-[#FADDE4] text-[#C96D84] font-black transition hover:bg-[#F3DCE2] disabled:opacity-40"
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+
+      <input
+        type="number"
+        inputMode="numeric"
+        min={MIN_RECIPE_SERVINGS}
+        max={MAX_RECIPE_SERVINGS}
+        value={draft}
+        aria-label={`${ariaLabelPrefix} من 1 إلى 50`}
+        onChange={event => {
+          const nextRaw = event.target.value;
+          setDraft(nextRaw);
+          const ascii = nextRaw.replace(/[٠-٩]/g, ch => String(ch.charCodeAt(0) - 0x0660)).trim();
+          const num = Number(ascii);
+          if (ascii !== '' && Number.isFinite(num) && num >= MIN_RECIPE_SERVINGS && num <= MAX_RECIPE_SERVINGS) {
+            onChange(Math.round(num));
+          }
+        }}
+        onBlur={() => commitValue(draft)}
+        onKeyDown={event => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            commitValue(draft);
+          }
+        }}
+        className="clay-inset h-8 w-12 px-1 text-center text-xs font-black text-[#4A353B] outline-none focus:border-[#D47E93] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
+
+      <button
+        type="button"
+        onClick={() => onChange(clampRecipeServings(value + 1))}
+        disabled={value >= MAX_RECIPE_SERVINGS}
+        aria-label="زيادة عدد الأفراد"
+        className="clay-tactile flex h-8 w-8 items-center justify-center rounded-xl bg-[#D47E93] text-white font-black transition hover:bg-[#C96D84] disabled:opacity-40"
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
 export function OnlineRecipeSearch({
   familySize: _familySize = 4,
   onBack,
@@ -793,6 +978,7 @@ export function OnlineRecipeSearch({
   onBack?: () => void;
 }) {
   const [query, setQuery] = useState('');
+  const [servingsCount, setServingsCount] = useState<number>(BASE_RECIPE_SERVINGS);
   const [results, setResults] = useState<OnlineRecipe[]>([]);
   const [selected, setSelected] = useState<OnlineRecipe | null>(null);
   const [saved, setSaved] = useState<OnlineRecipe[]>(() => readSavedRecipes());
@@ -819,6 +1005,20 @@ export function OnlineRecipeSearch({
       /* storage may be full */
     }
   }, [saved]);
+
+  const handleServingsChange = (nextServings: number) => {
+    const clamped = clampRecipeServings(nextServings);
+    setServingsCount(clamped);
+    if (speaking) {
+      void stopRecipeSpeech();
+    }
+    if (selected && saved.some(item => item.pageId === selected.pageId)) {
+      const scaledCopy = scaleOnlineRecipeForServings(selected, clamped);
+      setSaved(current =>
+        current.map(item => (item.pageId === selected.pageId ? scaledCopy : item))
+      );
+    }
+  };
 
   const searchForTerm = async (rawTerm: string) => {
     const term = rawTerm.trim();
@@ -967,11 +1167,12 @@ export function OnlineRecipeSearch({
     setSelected(null);
   };
 
-  const speakRecipe = async (recipe: OnlineRecipe) => {
-    const sections = getRecipeDisplaySections(recipe);
+  const speakRecipe = async (recipe: OnlineRecipe, targetServings = servingsCount) => {
+    const activeServings = clampRecipeServings(targetServings);
+    const sections = getRecipeDisplaySections(recipe, activeServings);
     const segments = buildEgyptianRecipeSpeechSegments(
       recipe.dishName || recipe.title,
-      recipe.servings || 4,
+      activeServings,
       sections.ingredients,
       sections.steps
     );
@@ -1028,8 +1229,16 @@ export function OnlineRecipeSearch({
     };
   }, []);
 
-  const saveRecipe = (recipe: OnlineRecipe) => {
-    setSaved(current => (current.some(item => item.pageId === recipe.pageId) ? current : [recipe, ...current]));
+  const saveRecipe = (recipe: OnlineRecipe, targetServings = servingsCount) => {
+    const scaledRecipe = scaleOnlineRecipeForServings(recipe, targetServings);
+    setSelected(scaledRecipe);
+    setSaved(current => {
+      const exists = current.some(item => item.pageId === scaledRecipe.pageId);
+      if (exists) {
+        return current.map(item => (item.pageId === scaledRecipe.pageId ? scaledRecipe : item));
+      }
+      return [scaledRecipe, ...current];
+    });
   };
   const removeSaved = (pageId: number) => setSaved(current => current.filter(item => item.pageId !== pageId));
   const currentItems = showSaved ? saved : results;
@@ -1062,11 +1271,19 @@ export function OnlineRecipeSearch({
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#8E757C]">
-          <Users className="h-3.5 w-3.5 text-[#D47E93]" aria-hidden="true" />
-          <span>المقادير مضبوطة لأسرة من 4 أفراد</span>
-        </span>
+      {/* Servings Selector Bar + Saved Recipes Toggle */}
+      <div className="clay-card-soft flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-[#4A353B]">
+            <Users className="h-3.5 w-3.5 text-[#D47E93]" aria-hidden="true" />
+            <span>المقادير والكميات محسوبة ومضبوطة لـ {servingsCount} أفراد</span>
+          </span>
+          <ServingsStepperControl
+            value={servingsCount}
+            onChange={handleServingsChange}
+            ariaLabelPrefix="تحديد عدد الأفراد في شاشة البحث"
+          />
+        </div>
         <button
           type="button"
           onClick={() => {
@@ -1155,7 +1372,7 @@ export function OnlineRecipeSearch({
             <RecipeCookingClayArt className="w-14 h-14" title="جاري تجهيز الوصفة" />
           </div>
           <p className="text-xs font-extrabold text-[#4A353B]">بنحضّرلك الوصفة الدقيقة بالمقادير والخطوات…</p>
-          <p className="text-[11px] text-[#8E757C]">لحظات وتظهر الوصفة جاهزة لـ 4 أفراد</p>
+          <p className="text-[11px] text-[#8E757C]">لحظات وتظهر الوصفة جاهزة لـ {servingsCount} أفراد</p>
         </div>
       )}
 
@@ -1194,7 +1411,8 @@ export function OnlineRecipeSearch({
           {currentItems.map(item => {
             const badge = getRecipeOriginBadge(item);
             const hasImage = Boolean(item.imageUrl) && !brokenImages[item.pageId];
-            const sections = getRecipeDisplaySections(item);
+            const cardServings = showSaved ? item.servings || servingsCount : servingsCount;
+            const sections = getRecipeDisplaySections(item, cardServings);
             const displayTitle = item.dishName || item.title;
             return (
               <div
@@ -1205,7 +1423,12 @@ export function OnlineRecipeSearch({
               >
                 <button
                   type="button"
-                  onClick={() => setSelected(item)}
+                  onClick={() => {
+                    if (showSaved && item.servings) {
+                      setServingsCount(clampRecipeServings(item.servings));
+                    }
+                    setSelected(item);
+                  }}
                   className="w-full flex items-center gap-3 text-right group"
                 >
                   <span className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-[#FFF1E8] border border-[#F3DCE2] flex items-center justify-center">
@@ -1234,7 +1457,7 @@ export function OnlineRecipeSearch({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-[#8E757C]">
-                      <span>👥 {item.servings || 4} أفراد</span>
+                      <span>👥 {cardServings} أفراد</span>
                       {typeof item.totalTimeMinutes === 'number' ? (
                         <span>⏱️ {item.totalTimeMinutes} دقيقة</span>
                       ) : item.prepTime ? (
@@ -1257,11 +1480,13 @@ export function OnlineRecipeSearch({
       {selected &&
         (() => {
           const badge = getRecipeOriginBadge(selected);
-          const sections = getRecipeDisplaySections(selected);
+          const sections = getRecipeDisplaySections(selected, servingsCount);
           const displayTitle = selected.dishName || selected.title;
           const hasValidImage = Boolean(selected.imageUrl) && !brokenImages[selected.pageId];
           const hasExternalSource =
             Boolean(selected.url) && selected.url !== 'https://www.themealdb.com/' && !selected.isAiGenerated;
+          const savedMatch = saved.find(item => item.pageId === selected.pageId);
+          const isSavedWithSameServings = Boolean(savedMatch && savedMatch.servings === servingsCount);
 
           const modalNode = (
             <div
@@ -1278,7 +1503,7 @@ export function OnlineRecipeSearch({
                     <span className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${badge.className}`}>
                       {badge.label}
                     </span>
-                    <span className="text-[11px] font-semibold text-[#8E757C]">لأسرة من {selected.servings || 4} أفراد</span>
+                    <span className="text-[11px] font-semibold text-[#8E757C]">لأسرة من {servingsCount} أفراد</span>
                   </div>
                   <h4
                     id="online-recipe-fullscreen-title"
@@ -1317,9 +1542,19 @@ export function OnlineRecipeSearch({
                     )}
                   </div>
 
-                  {/* Timings & Servings Strip */}
-                  <div className="clay-card-soft flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold text-[#4A353B]">
-                    <span>المقادير مضبوطة لـ {selected.servings || 4} أفراد</span>
+                  {/* Timings & Dynamic Servings Strip */}
+                  <div className="clay-card-soft flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-3 text-xs font-bold text-[#4A353B]">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 font-extrabold text-[#4A353B]">
+                        <Users className="h-4 w-4 text-[#D47E93]" aria-hidden="true" />
+                        <span>المقادير والكميات محسوبة ومضبوطة لـ {servingsCount} أفراد</span>
+                      </span>
+                      <ServingsStepperControl
+                        value={servingsCount}
+                        onChange={handleServingsChange}
+                        ariaLabelPrefix="تغيير عدد الأفراد داخل الوصفة"
+                      />
+                    </div>
                     <div className="flex flex-wrap items-center gap-3 text-[11px] font-extrabold text-[#C96D84]">
                       {typeof selected.prepTimeMinutes === 'number' && (
                         <span className="inline-flex items-center gap-1">
@@ -1340,7 +1575,9 @@ export function OnlineRecipeSearch({
 
                   {sections.ingredients.length > 0 && (
                     <section className="clay-card p-4">
-                      <h5 className="mb-2.5 text-sm font-black text-[#4A353B]">المكونات المطلوبة</h5>
+                      <h5 className="mb-2.5 text-sm font-black text-[#4A353B]">
+                        المكونات المطلوبة ({servingsCount} أفراد)
+                      </h5>
                       <ul className="space-y-2 text-sm leading-7 text-[#4A353B]">
                         {sections.ingredients.map((ingredient, index) => (
                           <li key={index} className="flex items-start gap-2">
@@ -1395,7 +1632,7 @@ export function OnlineRecipeSearch({
                 <div className="mx-auto flex max-w-2xl flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => void (speaking ? stopRecipeSpeech() : speakRecipe(selected))}
+                    onClick={() => void (speaking ? stopRecipeSpeech() : speakRecipe(selected, servingsCount))}
                     className={`inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 px-4 py-2 text-xs font-extrabold ${
                       speaking ? 'rounded-xl bg-red-600 hover:bg-red-700 text-white transition' : 'clay-btn-primary'
                     }`}
@@ -1406,16 +1643,20 @@ export function OnlineRecipeSearch({
                       </>
                     ) : (
                       <>
-                        <Volume2 className="h-4 w-4 shrink-0" /> اسمع الوصفة
+                        <Volume2 className="h-4 w-4 shrink-0" /> اسمع الوصفة ({servingsCount} أفراد)
                       </>
                     )}
                   </button>
                   <button
                     type="button"
-                    onClick={() => saveRecipe(selected)}
+                    onClick={() => saveRecipe(selected, servingsCount)}
                     className="clay-btn-secondary clay-tactile min-h-[44px] px-3.5 py-2 text-xs font-extrabold text-[#C96D84]"
                   >
-                    {saved.some(item => item.pageId === selected.pageId) ? '✓ محفوظة' : '☆ احفظ الوصفة'}
+                    {isSavedWithSameServings
+                      ? `✓ محفوظة (${servingsCount} أفراد)`
+                      : savedMatch
+                      ? `☆ احفظ لـ ${servingsCount} أفراد`
+                      : '☆ احفظ الوصفة'}
                   </button>
                   {showSaved && (
                     <button

@@ -1,4 +1,4 @@
-import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import {
   doesDishImageStrictlyMatch,
   formatCuisineLabel,
@@ -9,8 +9,8 @@ import { scoreRecipeDishRelevance } from './arabicSearch.ts';
 import { searchEgyptianArabicCatalog } from './egyptianRecipesCatalog.ts';
 import { RECIPES } from '../../data/seedData.ts';
 
-// Fast, quota-efficient Gemini Flash model alias
-export const GEMINI_MODEL = 'gemini-4-hydrogen';
+// Fast, quota-efficient Gemini Flash model
+export const GEMINI_MODEL = 'gemini-2.5-flash';
 export const GEMINI_MAX_OUTPUT_TOKENS = 1200;
 export const GEMINI_TIMEOUT_MS = 22_000;
 export const PHOTO_LOOKUP_TIMEOUT_MS = 2_200;
@@ -313,7 +313,6 @@ export async function generateRecipeWithGeminiSdk(
             responseMimeType: 'application/json',
             responseSchema: RECIPE_RESPONSE_SCHEMA,
             maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           },
         }),
         timeoutPromise,
@@ -433,7 +432,7 @@ export function searchOfflineLocalRecipes(
       const origin = cuisineTierToOfflineOrigin(item.cuisine, item.title);
       return {
         title: item.title,
-        servings: item.servings || 4,
+        servings: 4,
         pageId: item.pageId,
         url: '',
         extract: item.extract,
@@ -467,7 +466,7 @@ export function searchOfflineLocalRecipes(
         910000 + Math.abs(recipe.id.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0));
       return {
         title: recipe.name,
-        servings: recipe.baseServings || 4,
+        servings: 4,
         pageId,
         url: '',
         extract: `المكونات:\n${ingredientsText}\n\nطريقة التحضير:\n${stepsText}`,
