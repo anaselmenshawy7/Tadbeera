@@ -4,17 +4,25 @@
       "sha256": "bd1bb434e0ef258fb626407867c207df5ebc73a9ce0c28fec033638fc154c00f",
       "size": 123720
     },
-    "assets/HouseholdHub-JP3a-8dZ.js": {
-      "sha256": "8e88a486fd0490ca252637cef71a56d19823b76ac6c304a771ccca5d76468963",
-      "size": 32963
+    "assets/HouseholdHub-ZjHRUh0p.js": {
+      "sha256": "0f8524632bb5210efc1e92a16105a9d7deaa3ca768543823e626fdab3b5fefd1",
+      "size": 45756
     },
-    "assets/IngredientRecipeFinder-3tD1Npt2.js": {
-      "sha256": "272c09f0119b87bdb4ba8f10a4d45e8bfa95b656f4e7a06425cbfe3fdd81ebb0",
-      "size": 28295
+    "assets/IngredientRecipeFinder-z2KbQCLG.js": {
+      "sha256": "2f76196a4becdabad9ba4afda310b3d4e20ae362891d2da152a6ea71d4b0cc60",
+      "size": 39367
     },
-    "assets/OnlineRecipeSearch-CkniFzik.js": {
-      "sha256": "167699b98a34c32aee9e84c27991ceab300a12210d5f9bfc0ba3e3a350d035e0",
-      "size": 73156
+    "assets/OnlineRecipeSearch-hi8A-7eT.js": {
+      "sha256": "c23c2715b238baae49de944a873bd0e2bf5fad9b9d70eae6f8d2d9ee0fff3e05",
+      "size": 175455
+    },
+    "assets/aistudio/IMG-20261118-WA0001_2934f6ba.jpg": {
+      "sha256": "2934f6baa20bf94c3ab188d44612b3cff003396d0e46c6347b35f85d49971b9c",
+      "size": 45059
+    },
+    "assets/aistudio/IMG-20261118-WA0002_ff57301c.jpg": {
+      "sha256": "ff57301c6bff69e7cb8b9963907539e780ce0e599f6fe78a89fa355d592460fe",
+      "size": 90712
     },
     "assets/aistudio/Screenshot_2026-11-17-23-11-41-373_com.android.chrome_a5b0b0b7.jpg": {
       "sha256": "a5b0b0b75a37b43b5f902a962b5129734d90130068ed2bbeada00f8f66c97313",
@@ -24,25 +32,25 @@
       "sha256": "2efdb44d9f54a0edd1e4bf8361ba33baef20597f8c476be5ff46037200f57aa4",
       "size": 1746865
     },
-    "assets/index-DNQNWqMc.css": {
-      "sha256": "5ea2aa5d423abdfd4aa0c76567cc3801c84376b6c8d928d50c2c03e7d52ea67f",
-      "size": 70130
+    "assets/index-C4rbh6Y1.css": {
+      "sha256": "fd6c57b552e87423193fb2a8cbbd22b3e7f7b0a9b6cde28711af9b432492ab93",
+      "size": 62816
     },
-    "assets/index-p7_TrRuA.js": {
-      "sha256": "b5e8ba675b51ec95c2badf8c7b8c6e30997d2ca1c23fd0b7e7fcb1552ad53e3a",
-      "size": 905569
+    "assets/index-CAWuhwTm.js": {
+      "sha256": "1f70c1153be6990263a23076dda07ca8b9fa3366367e7a0c8b8562c6e4779b38",
+      "size": 1228531
     },
-    "assets/web-BX13Z1Q-.js": {
-      "sha256": "7ed46a148045767f23949b7ec88733f95cb4fa207dea9af3eb8b8366c898c073",
-      "size": 4438
+    "assets/web-CaW83TVU.js": {
+      "sha256": "a245157226345eeac1bf5faddd45b6b33acb52975563761c25bae7528e880962",
+      "size": 4120
     },
-    "assets/web-CGkmAYAi.js": {
-      "sha256": "d555e9779ee53479472fb78845667232b0f4582ac1cee82030ecd9c429304981",
-      "size": 5090
+    "assets/web-Ck2BEcgE.js": {
+      "sha256": "c1cb3df21081be44f684f849995975bde96b90955cf5504598d12b27175b6096",
+      "size": 6800
     },
-    "assets/web-hLgHy90O.js": {
-      "sha256": "e836bb4bea3eae2349a20ee147a53acc84e18a0c15767f6c3a0bad0bc61f4b88",
-      "size": 2547
+    "assets/web-ZSY6zw-X.js": {
+      "sha256": "fd304ceae21bb6b39e163d496a31172988e5aaaa7934833ba526d23c4b260c9a",
+      "size": 6936
     },
     "cordova.js": {
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -81,7 +89,7 @@
       "size": 484717
     },
     "index.html": {
-      "sha256": "80dfee53e21e12d69e3f68af38e1330a7b8d981f2e6e3e252280ad87e951d894",
+      "sha256": "b594b63659777f47866d1bf751ed561aeeb5f719e3c192e6b30ae98c8ebc67ab",
       "size": 2222
     },
     "manifest.json": {
@@ -91,14 +99,6 @@
     "manifest.webmanifest": {
       "sha256": "3fbcbf44c03f975c0d47fb7f8cbbc5b5360b1cb450941a796ec6e2daf11c784e",
       "size": 785
-    },
-    "sw.js": {
-      "sha256": "367e63fe499897e3b915a2320a5b36749320ed8f3bb368e26f3f43de9e8db475",
-      "size": 4314
-    },
-    "workbox-afac4cd2.js": {
-      "sha256": "eacbe6e43e5f9e235bf460631a1098df7866e61b0fef1ebaf9bb0089cc98aa7d",
-      "size": 174524
     }
   }
 }

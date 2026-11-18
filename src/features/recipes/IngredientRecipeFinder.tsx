@@ -605,7 +605,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
               </div>
 
               {selectedAvailableIngredients.length > 0 && (
-                <div className="rounded-2xl border border-[#F3DCE2] bg-[#FADDE4]/55 p-3">
+                <div className="clay-card-soft p-3.5">
                   <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-[#C96D84]">
                     <Check className="h-4 w-4 shrink-0" />
                     <span>مكونات متوفرة عندك ({selectedAvailableIngredients.length})</span>
@@ -622,7 +622,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
               )}
 
               {selectedMissingIngredients.length > 0 ? (
-                <div className="rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3">
+                <div className="clay-card p-3.5">
                   <div className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-[#8E757C]">
                     <AlertCircle className="h-4 w-4 shrink-0 text-[#C96D84]" />
                     <span>مكونات ناقصة (تحتاجها الوصفة) ({selectedMissingIngredients.length})</span>
@@ -637,7 +637,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
                   </ul>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 rounded-2xl border border-[#F3DCE2] bg-[#FADDE4]/55 p-3 text-xs font-bold text-[#C96D84]">
+                <div className="clay-card-soft flex items-center gap-2 p-3.5 text-xs font-bold text-[#C96D84]">
                   <Check className="h-4 w-4 shrink-0" />
                   <span>كل مكونات الوصفة متوفرة عندك — جاهزة للتحضير فوراً</span>
                 </div>
@@ -646,7 +646,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
           )}
 
           {/* Preparation Steps */}
-          <div className="space-y-2 rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3.5">
+          <div className="clay-card-cream space-y-2 p-4">
             <h5 className="text-xs font-black text-[#4A353B]">طريقة التحضير</h5>
             <p className="whitespace-pre-wrap text-sm leading-7 text-[#4A353B]">{selected.instructions}</p>
           </div>
@@ -671,7 +671,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
           <button
             type="button"
             onClick={() => setSelected(null)}
-            className="flex min-h-[44px] w-full items-center justify-center rounded-xl bg-[#D47E93] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#C96D84] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
+            className="clay-btn-primary flex min-h-[44px] w-full items-center justify-center px-4 py-2.5 text-sm font-extrabold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
           >
             إغلاق
           </button>
@@ -681,7 +681,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
   ) : null;
 
   return (
-    <section dir="rtl" className="mt-3 space-y-3 rounded-2xl border border-[#F3DCE2] bg-[#FFF8FA] p-3.5">
+    <section dir="rtl" className="clay-inset mt-3.5 space-y-3 p-3.5">
       <div>
         <h3 className="text-sm font-black text-[#4A353B]">🍲 اطبخ بالموجود عندك</h3>
         <p className="mt-1 text-[11px] leading-5 text-[#8E757C]">
@@ -693,10 +693,10 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
         <button
           type="button"
           onClick={() => setCuisine('all')}
-          className={`min-h-[40px] whitespace-nowrap shrink-0 rounded-xl px-3.5 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93] ${
+          className={`clay-tactile min-h-[40px] whitespace-nowrap shrink-0 px-3.5 py-2 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93] ${
             cuisine === 'all'
-              ? 'bg-[#D47E93] text-white shadow-xs'
-              : 'border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] hover:bg-[#FADDE4]/50'
+              ? 'clay-btn-primary'
+              : 'clay-btn-secondary text-[#4A353B]'
           }`}
         >
           كل المطابخ
@@ -704,10 +704,10 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
         <button
           type="button"
           onClick={() => setCuisine('egyptian')}
-          className={`min-h-[40px] whitespace-nowrap shrink-0 rounded-xl px-3.5 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93] ${
+          className={`clay-tactile min-h-[40px] whitespace-nowrap shrink-0 px-3.5 py-2 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93] ${
             cuisine === 'egyptian'
-              ? 'bg-[#D47E93] text-white shadow-xs'
-              : 'border border-[#F3DCE2] bg-[#FFFFFF] text-[#4A353B] hover:bg-[#FADDE4]/50'
+              ? 'clay-btn-primary'
+              : 'clay-btn-secondary text-[#4A353B]'
           }`}
         >
           أكلات مصرية
@@ -716,7 +716,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
           type="button"
           disabled={!availableIngredients.length || loading}
           onClick={search}
-          className="min-h-[40px] whitespace-nowrap shrink-0 rounded-xl bg-[#D47E93] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#C96D84] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
+          className="clay-btn-primary min-h-[40px] whitespace-nowrap shrink-0 px-4 py-2 text-xs font-extrabold disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
         >
           {loading ? 'بنكمّل البحث أونلاين…' : 'دور بالمكونات دي'}
         </button>
@@ -727,7 +727,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
       </p>
 
       {error && (
-        <p role="status" className="rounded-xl border border-[#F3DCE2] bg-[#FADDE4]/50 p-2.5 text-xs font-medium text-[#4A353B]">
+        <p role="status" className="clay-card-soft p-2.5 text-xs font-medium text-[#4A353B]">
           {error}
         </p>
       )}
@@ -748,10 +748,10 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
                 type="button"
                 aria-pressed={showAllRecipes}
                 onClick={() => setShowAllRecipes((prev) => !prev)}
-                className={`inline-flex min-h-[36px] whitespace-nowrap shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93] ${
+                className={`clay-tactile inline-flex min-h-[36px] whitespace-nowrap shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93] ${
                   showAllRecipes
-                    ? 'border-[#D47E93] bg-[#D47E93] text-white'
-                    : 'border-[#F3DCE2] bg-[#FFFFFF] text-[#C96D84] hover:bg-[#FADDE4]/50'
+                    ? 'clay-btn-primary rounded-full'
+                    : 'clay-btn-secondary rounded-full text-[#C96D84]'
                 }`}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
@@ -773,11 +773,11 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
                     type="button"
                     key={item.id}
                     onClick={() => setSelected(item)}
-                    className={`flex w-full items-center justify-between gap-3 rounded-xl border bg-[#FFFFFF] p-2.5 text-right transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93] ${
-                      isSelected ? 'border-[#D47E93] ring-1 ring-[#D47E93]/30' : 'border-[#F3DCE2] hover:border-[#D47E93]'
+                    className={`clay-card clay-tactile flex w-full items-center justify-between gap-3 p-2.5 text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93] ${
+                      isSelected ? 'border-[#D47E93] ring-1 ring-[#D47E93]/30' : 'hover:border-[#D47E93]'
                     }`}
                   >
-                    <span className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-[#FADDE4]/40">
+                    <span className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-[#FADDE4]/40 border border-[#F3DCE2]">
                       {item.image ? (
                         <img
                           src={item.image}
@@ -817,7 +817,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
               })}
             </div>
           ) : (
-            <div className="space-y-2.5 rounded-xl border border-dashed border-[#F3DCE2] bg-[#FFFFFF] p-4 text-center">
+            <div className="clay-card-cream space-y-2.5 p-4 text-center">
               <p className="text-xs font-semibold text-[#4A353B]">
                 مفيش وصفات مطابقة للمكونات المختارة حالياً.
               </p>
@@ -825,7 +825,7 @@ export function IngredientRecipeFinder({ availableIngredients, familySize = 4 }:
                 <button
                   type="button"
                   onClick={() => setShowAllRecipes(true)}
-                  className="inline-flex min-h-[40px] items-center justify-center rounded-xl bg-[#D47E93] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#C96D84]"
+                  className="clay-btn-primary inline-flex min-h-[40px] items-center justify-center px-4 py-2 text-xs font-extrabold"
                 >
                   إظهار كل الوصفات ({cuisineFilteredResults.length})
                 </button>

@@ -12,16 +12,16 @@ export function ShoppingTotalsSummary({ totals, items, isFetchingPrices }: Shopp
   return (
     <>
       <div className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <span className="text-[11px] text-[#8E757C] block">
             {totals.isFullyPriced ? 'إجمالي النواقص التقديري:' : 'مجموع الأصناف المسعرة حتى الآن:'}
           </span>
           <div className="flex flex-wrap items-baseline gap-2">
-            <span className="text-xl font-black text-[#C96D84]">
+            <span className="text-xl font-black text-[#C96D84] tabular-nums">
               {totals.knownTotal} جنيه مصري
             </span>
             {!totals.isFullyPriced && (
-              <span className="bg-[#FADDE4] text-[#C96D84] text-[10px] font-bold px-2 py-0.5 rounded-md border border-[#F3DCE2]">
+              <span className="bg-[#D9AE72]/20 text-[#4A353B] text-[10px] font-bold px-2 py-0.5 rounded-lg border border-[#D9AE72]/45 tabular-nums">
                 {isFetchingPrices
                   ? 'جاري التحقق من الأسعار...'
                   : `${totals.unpricedCount} أصناف تنتظر السعر`}
@@ -37,15 +37,15 @@ export function ShoppingTotalsSummary({ totals, items, isFetchingPrices }: Shopp
 
         <div className="text-left shrink-0">
           <span className="text-[10px] text-[#8E757C] block">المتبقي للشراء:</span>
-          <span className="text-sm font-bold text-[#C96D84]">
+          <span className="text-sm font-black text-[#C96D84] tabular-nums">
             {totals.pendingKnownTotal} ج.م
           </span>
         </div>
       </div>
 
       {items.length > 0 && items.every(item => item.isChecked) && (
-        <div className="bg-[#FADDE4]/70 border border-[#E8A8B7] text-[#4A353B] p-3 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-sm animate-pulse">
-          <Sparkles className="w-4 h-4 text-[#C96D84] shrink-0" />
+        <div className="clay-card-cream border border-[#A8B8A0]/55 text-[#4A353B] p-3 text-xs font-extrabold flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-[#A8B8A0] shrink-0" />
           <span>🎉 شطبت كل طلباتك ووفرت صح!</span>
         </div>
       )}

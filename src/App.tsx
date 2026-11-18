@@ -2,10 +2,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 import {
-  Utensils,
-  BookOpen,
-  Wallet,
-  Lightbulb,
   Bookmark,
   Check,
   Plus,
@@ -22,16 +18,10 @@ import {
   Settings,
   Users,
   Edit3,
-  Tag,
-  Receipt,
-  Car,
-  Home,
-  PiggyBank,
   FileDown,
   FileUp,
   X,
   Calendar,
-  PieChart,
   Mic,
   Award,
   Play,
@@ -126,6 +116,18 @@ import {
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ActiveAlarmOverlay } from './components/ActiveAlarmOverlay';
+import { BottomNavigation } from './components/BottomNavigation';
+import {
+  Bookmark3DIcon,
+  Budget3DIcon,
+  Calendar3DIcon,
+  Home3DIcon,
+  Household3DIcon,
+  Kitchen3DIcon,
+  SavingsGold3DIcon,
+  Shopping3DIcon,
+  VoiceMic3DIcon,
+} from './components/Tadbeera3DIcons';
 import { RecipeIllustration } from './components/RecipeIllustration';
 import { ShoppingTotalsSummary } from './features/shopping/ShoppingTotalsSummary';
 import { HomeInventorySection } from './features/inventory/HomeInventorySection';
@@ -240,21 +242,21 @@ function SvgIllustration({
   return <RecipeIllustration type={type} recipeName={recipeName} recipeId={recipeId} className={className} />;
 }
 
-function renderCategoryIcon(iconName?: string, className = "w-4 h-4") {
+function renderCategoryIcon(iconName?: string, className = "w-7 h-7") {
   switch (iconName) {
     case 'utensils':
-      return <Utensils className={className} />;
+      return <Kitchen3DIcon className={className} />;
     case 'receipt':
-      return <Receipt className={className} />;
+      return <Budget3DIcon className={className} />;
     case 'car':
-      return <Car className={className} />;
+      return <Shopping3DIcon className={className} />;
     case 'home':
-      return <Home className={className} />;
+      return <Home3DIcon className={className} />;
     case 'piggy':
-      return <PiggyBank className={className} />;
+      return <SavingsGold3DIcon className={className} />;
     case 'tag':
     default:
-      return <Tag className={className} />;
+      return <Household3DIcon className={className} />;
   }
 }
 
@@ -2638,7 +2640,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsSettingsModalOpen(true)}
-                className="p-1.5 rounded-lg bg-[#FADDE4] hover:bg-[#E8A8B7]/40 text-[#C96D84] transition"
+                className="clay-btn-secondary clay-tactile p-2 rounded-xl text-[#C96D84]"
                 title="إعدادات وأمان البيانات"
                 aria-label="إعدادات وأمان البيانات"
               >
@@ -2649,44 +2651,102 @@ export default function App() {
         </header>
 
         {/* Scrollable Screen Content with shared layout clearance ensuring 70-90px breathing room */}
-        <div className={`tadbeera-screen-content flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 bg-[#FFF8FA] [&>*]:max-w-2xl [&>*]:mx-auto [&>*]:w-full ${isNativeApp && (adStatus === 'loaded' || adStatus === 'loading') ? "pb-[calc(2rem+env(safe-area-inset-bottom))]" : isNativeApp ? "pb-[calc(4.5rem+env(safe-area-inset-bottom))]" : "pb-[calc(1.5rem+env(safe-area-inset-bottom))]"}`}>
+        <div className={`tadbeera-screen-content flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain p-4 space-y-4 bg-[#FFF8FA] [&>*]:max-w-2xl [&>*]:mx-auto [&>*]:w-full ${isNativeApp && (adStatus === 'loaded' || adStatus === 'loading') ? "pb-[calc(2rem+env(safe-area-inset-bottom))]" : isNativeApp ? "pb-[calc(4.5rem+env(safe-area-inset-bottom))]" : "pb-[calc(1.5rem+env(safe-area-inset-bottom))]"}`}>
 
 
               {activeTab === 'home' && (
-                <section className="space-y-3.5" dir="rtl" aria-label="الرئيسية">
-                  <div className="rounded-[26px] bg-gradient-to-br from-[#E8A8B7] to-[#D47E93] text-white p-4 shadow-sm">
+                <section className="space-y-4" dir="rtl" aria-label="الرئيسية">
+                  {/* Warm Powder Pink & Cream Soft-3D Welcome Banner */}
+                  <div className="clay-card-soft rounded-[28px] p-4 bg-gradient-to-br from-[#FFF1E8] via-[#FADDE4] to-[#F3DCE2]">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <span className="text-[11px] text-[#FFF8FA] font-semibold">بيتكم في إيدكم 🌿</span>
-                        <h2 className="text-xl font-extrabold mt-1">أهلاً بيكم في تدبيرة</h2>
-                        <p className="text-[11px] text-white/90 mt-1 leading-5">كل احتياجات بيتكم اليومية في مكان واحد.</p>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="clay-icon-well w-12 h-12 rounded-2xl flex items-center justify-center shrink-0">
+                          <Home3DIcon className="w-9 h-9" />
+                        </span>
+                        <div className="min-w-0">
+                          <span className="text-[11px] text-[#C96D84] font-extrabold block">بيتكم في إيدكم 🌿</span>
+                          <h2 className="text-xl font-black text-[#4A353B] mt-0.5 leading-snug">أهلاً بيكم في تدبيرة</h2>
+                          <p className="text-[11px] text-[#4A353B]/75 mt-0.5 leading-5">كل احتياجات بيتكم اليومية في مكان واحد.</p>
+                        </div>
                       </div>
                       <button
                         type="button"
                         onClick={() => setIsFamilySizeModalOpen(true)}
-                        className="shrink-0 rounded-2xl bg-white/25 hover:bg-white/35 active:scale-95 px-3 py-2 text-center transition cursor-pointer border border-white/25"
+                        className="clay-card clay-tactile shrink-0 rounded-2xl px-3 py-2 text-center cursor-pointer"
                         aria-label="تعديل عدد أفراد الأسرة"
                         title="اضغطي لتعديل عدد أفراد الأسرة"
                       >
-                        <div className="flex items-center justify-center gap-1 mb-1">
-                          <Users className="w-4 h-4" />
-                          <Edit3 className="w-3 h-3 text-white/90" />
+                        <div className="flex items-center justify-center gap-1 mb-0.5">
+                          <Household3DIcon className="w-5 h-5" />
+                          <Edit3 className="w-3 h-3 text-[#C96D84]" />
                         </div>
-                        <span className="text-[10px] block">أفراد الأسرة</span>
-                        <strong className="text-lg leading-none">{familySize}</strong>
+                        <span className="text-[10px] font-bold text-[#8E757C] block">أفراد الأسرة</span>
+                        <strong className="text-lg font-black text-[#C96D84] leading-none tabular-nums">{familySize}</strong>
                       </button>
                     </div>
                   </div>
-                  <div className="flex items-end justify-between gap-2">
-                    <div><h3 className="font-extrabold text-sm text-[#4A353B]">تحبوا نبدأ بإيه النهارده؟</h3><p className="text-[10px] text-[#8E757C] mt-0.5">اختاروا القسم وابدأوا على طول</p></div>
-                    <span className="text-[10px] text-[#8E757C]">اختصارات سريعة</span>
+
+                  <div className="flex items-end justify-between gap-2 px-0.5">
+                    <div>
+                      <h3 className="font-extrabold text-sm text-[#4A353B]">تحبوا نبدأ بإيه النهارده؟</h3>
+                      <p className="text-[10px] text-[#8E757C] mt-0.5">اختاروا القسم وابدأوا على طول</p>
+                    </div>
+                    <span className="text-[10px] font-bold text-[#C96D84]">اختصارات سريعة</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <button type="button" onClick={() => setActiveTab('food')} className="text-right rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center"><Utensils className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#4A353B]">المطبخ والوصفات</b><small className="block text-[10px] text-[#8E757C] mt-0.5">اختاروا طبخة النهارده</small></button>
-                    <button type="button" onClick={() => setActiveTab('saved')} className="text-right rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center"><ShoppingCart className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#4A353B]">قائمة المشتريات</b><small className="block text-[10px] text-[#8E757C] mt-0.5">{shoppingItems.filter(item => !item.isChecked).length} أصناف لسه محتاجة تتجاب</small></button>
-                    <button type="button" onClick={() => setActiveTab('budget')} className="text-right rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center"><Wallet className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#4A353B]">ميزانية البيت</b><small className="block text-[10px] text-[#8E757C] mt-0.5">المبلغ المحدد: {budgetAmount || '—'} ج.م</small></button>
-                    <button type="button" onClick={() => setActiveTab('household')} className="text-right rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 shadow-sm active:scale-[0.98] transition"><span className="w-9 h-9 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center"><Home className="w-5 h-5" /></span><b className="block text-xs mt-2.5 text-[#4A353B]">إدارة البيت</b><small className="block text-[10px] text-[#8E757C] mt-0.5">التنبيهات والمهام والادخار</small></button>
+
+                  {/* 4 Soft-3D Clay Dashboard Summary Cards with Dimensional SVG Icons */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('food')}
+                      className="clay-card clay-tactile text-right p-3.5"
+                    >
+                      <span className="clay-icon-well w-11 h-11 rounded-2xl flex items-center justify-center">
+                        <Kitchen3DIcon className="w-8 h-8" />
+                      </span>
+                      <b className="block text-xs font-extrabold mt-3 text-[#4A353B]">المطبخ والوصفات</b>
+                      <small className="block text-[10px] text-[#8E757C] mt-0.5">اختاروا طبخة النهارده</small>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('saved')}
+                      className="clay-card clay-tactile text-right p-3.5"
+                    >
+                      <span className="clay-icon-well w-11 h-11 rounded-2xl flex items-center justify-center">
+                        <Shopping3DIcon className="w-8 h-8" />
+                      </span>
+                      <b className="block text-xs font-extrabold mt-3 text-[#4A353B]">قائمة المشتريات</b>
+                      <small className="block text-[10px] text-[#8E757C] mt-0.5 tabular-nums">
+                        {shoppingItems.filter(item => !item.isChecked).length} أصناف لسه محتاجة تتجاب
+                      </small>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('budget')}
+                      className="clay-card clay-tactile text-right p-3.5"
+                    >
+                      <span className="clay-icon-well w-11 h-11 rounded-2xl flex items-center justify-center">
+                        <Budget3DIcon className="w-8 h-8" />
+                      </span>
+                      <b className="block text-xs font-extrabold mt-3 text-[#4A353B]">ميزانية البيت</b>
+                      <small className="block text-[10px] text-[#8E757C] mt-0.5 tabular-nums">
+                        المبلغ المحدد: {budgetAmount || '—'} ج.م
+                      </small>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('household')}
+                      className="clay-card clay-tactile text-right p-3.5"
+                    >
+                      <span className="clay-icon-well w-11 h-11 rounded-2xl flex items-center justify-center">
+                        <Household3DIcon className="w-8 h-8" />
+                      </span>
+                      <b className="block text-xs font-extrabold mt-3 text-[#4A353B]">إدارة البيت</b>
+                      <small className="block text-[10px] text-[#8E757C] mt-0.5">التنبيهات والمهام والادخار</small>
+                    </button>
                   </div>
+
+                  {/* Primary Soft-3D Dusty Rose Action CTA */}
                   <button
                     type="button"
                     onClick={() => {
@@ -2696,28 +2756,35 @@ export default function App() {
                       setNewItemUnitPrice('');
                       setIsAddItemModalOpen(true);
                     }}
-                    className="w-full min-h-[44px] rounded-xl bg-[#D47E93] hover:bg-[#C96D84] text-white py-2.5 px-3 text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-xs"
+                    className="clay-btn-primary w-full min-h-[46px] py-2.5 px-4 text-xs font-extrabold flex items-center justify-center gap-2"
                   >
-                    <Plus className="w-4 h-4 shrink-0" />
-                    <span>إضافة نواقص للسوق</span>
+                    <Shopping3DIcon className="w-5 h-5 shrink-0" />
+                    <span>+ إضافة نواقص للسوق</span>
                   </button>
-                  <div className="rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3.5 space-y-2.5">
-                    <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-extrabold text-[#4A353B]">💡 تدبيرة اليوم</span><span className={dailyCompleted ? "text-[10px] font-bold text-[#C96D84]" : "text-[10px] font-bold text-[#8E757C]"}>{dailyCompleted ? "أنجزتوا تحدي النهارده ✓" : "خطوة صغيرة لبيت أهدى"}</span></div>
-                    <p className="text-[11px] text-[#8E757C] leading-5">{todayChallenge.title}</p>
+
+                  {/* Warm Cream Daily Saving Tip Clay Card */}
+                  <div className="clay-card-cream p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-extrabold text-[#4A353B]">💡 تدبيرة اليوم</span>
+                      <span className={dailyCompleted ? "text-[10px] font-extrabold text-[#C96D84]" : "text-[10px] font-bold text-[#8E757C]"}>
+                        {dailyCompleted ? "أنجزتوا تحدي النهارده ✓" : "خطوة صغيرة لبيت أهدى"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#4A353B]/80 leading-5">{todayChallenge.title}</p>
                     <div className="flex flex-wrap items-center gap-2 pt-0.5">
                       <button
                         type="button"
                         onClick={() => { setDailyTipsViewMode('all'); setActiveTab('daily'); }}
-                        className="min-h-[40px] rounded-xl bg-[#D47E93] hover:bg-[#C96D84] text-white px-3 py-1.5 text-[11px] font-bold transition whitespace-nowrap"
+                        className="clay-btn-primary min-h-[40px] px-3.5 py-1.5 text-[11px] font-extrabold whitespace-nowrap"
                       >
                         {dailyCompleted ? 'راجعوا أفكار التوفير' : 'شوفوا تفاصيل تدبيرة اليوم'}
                       </button>
                       <button
                         type="button"
                         onClick={() => { setDailyTipsViewMode('saved'); setActiveTab('daily'); }}
-                        className="min-h-[40px] rounded-xl border border-[#F3DCE2] bg-[#FADDE4] hover:bg-[#E8A8B7]/40 text-[#C96D84] px-3 py-1.5 text-[11px] font-bold inline-flex items-center gap-1 transition whitespace-nowrap"
+                        className="clay-btn-secondary min-h-[40px] text-[#C96D84] px-3.5 py-1.5 text-[11px] font-extrabold inline-flex items-center gap-1.5 whitespace-nowrap"
                       >
-                        <Bookmark className="w-3.5 h-3.5 shrink-0" />
+                        <Home3DIcon className="w-4 h-4 shrink-0" />
                         <span>أفكاري المحفوظة ({savedTipIds.length})</span>
                       </button>
                     </div>
@@ -2740,23 +2807,35 @@ export default function App() {
                 <div className="space-y-4">
                   {kitchenView === 'online' ? (
                     <ErrorBoundary fallbackTitle="تعذر تحميل البحث الصوتي عن الوصفات" onReset={() => setKitchenView('main')}>
-                      <React.Suspense fallback={<div className="rounded-2xl border border-[#F3DCE2] bg-white p-5 text-center text-sm text-[#8E757C]">بنجهز مساعد الوصفات الصوتي…</div>}>
+                      <React.Suspense fallback={<div className="clay-card p-5 text-center text-sm text-[#8E757C]">بنجهز مساعد الوصفات الصوتي…</div>}>
                         <OnlineRecipeSearch familySize={familySize} onBack={() => setKitchenView('main')} />
                       </React.Suspense>
                     </ErrorBoundary>
                   ) : kitchenView === 'offline' ? (
                     <section dir="rtl" className="space-y-3">
                       <div className="flex items-center justify-between gap-2">
-                        <button type="button" onClick={() => setKitchenView('main')} className="inline-flex items-center gap-1 rounded-xl border border-[#F3DCE2] bg-white px-3 py-2 text-xs font-bold text-[#4A353B] min-h-[40px]">
+                        <button type="button" onClick={() => setKitchenView('main')} className="clay-btn-secondary clay-tactile inline-flex items-center gap-1 px-3 py-2 text-xs font-bold text-[#4A353B] min-h-[40px]">
                           <ChevronRight className="h-4 w-4" /> رجوع للمطبخ
                         </button>
-                        <span className="rounded-full bg-[#FADDE4] px-3 py-1.5 text-[10px] font-bold text-[#C96D84]">تعمل بدون إنترنت</span>
+                        <span className="rounded-full bg-[#A8B8A0]/25 border border-[#A8B8A0]/45 px-3 py-1 text-[10px] font-extrabold text-[#4A353B]">تعمل بدون إنترنت</span>
                       </div>
-                      <div className="rounded-2xl bg-[#FFFFFF] border border-[#F3DCE2] p-4">
-                        <h2 className="text-lg font-black text-[#4A353B]">مكتبة وصفات تدبيرة 🌿</h2>
-                        <p className="mt-1 text-xs leading-5 text-[#8E757C]">كل الوصفات المصرية والبيتية المحفوظة داخل التطبيق في مكان واحد، وتقدر تفتحها وتفلترها بدون إنترنت.</p>
+
+                      <div className="clay-card-soft p-4 flex items-center gap-3">
+                        <span className="clay-icon-well w-12 h-12 rounded-2xl flex items-center justify-center shrink-0">
+                          <Kitchen3DIcon className="w-9 h-9" />
+                        </span>
+                        <div className="min-w-0">
+                          <h2 className="text-lg font-black text-[#4A353B]">مكتبة وصفات تدبيرة 🌿</h2>
+                          <p className="mt-0.5 text-xs leading-5 text-[#8E757C]">كل الوصفات المصرية والبيتية المحفوظة داخل التطبيق في مكان واحد، وتقدر تفتحها وتفلترها بدون إنترنت.</p>
+                        </div>
                       </div>
-                      <input value={offlineRecipeQuery} onChange={event => setOfflineRecipeQuery(event.target.value)} placeholder="ابحث في الوصفات المجانية..." className="w-full rounded-xl border border-[#F3DCE2] bg-white px-3 py-3 text-sm text-[#4A353B] outline-none focus:border-[#D47E93]" />
+
+                      <input
+                        value={offlineRecipeQuery}
+                        onChange={event => setOfflineRecipeQuery(event.target.value)}
+                        placeholder="ابحث في الوصفات المجانية..."
+                        className="clay-inset w-full px-3.5 py-3 text-sm text-[#4A353B] outline-none focus:border-[#D47E93]"
+                      />
 
                       {/* Meal Category, Saved & Ready Filters */}
                       <div className="flex gap-1.5 overflow-x-auto pb-1 text-xs items-center">
@@ -2770,10 +2849,10 @@ export default function App() {
                             key={cat.key}
                             type="button"
                             onClick={() => setMealFilter(cat.key as MealTypeFilter)}
-                            className={`min-h-[40px] px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 transition ${
+                            className={`clay-tactile min-h-[40px] px-3.5 py-1.5 text-xs font-bold whitespace-nowrap shrink-0 ${
                               mealFilter === cat.key
-                                ? 'bg-[#D47E93] text-white shadow-sm'
-                                : 'bg-white border border-[#F3DCE2] text-[#4A353B] hover:bg-[#FFF8FA]'
+                                ? 'clay-btn-primary'
+                                : 'clay-btn-secondary text-[#4A353B]'
                             }`}
                           >
                             {cat.label}
@@ -2783,10 +2862,10 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => setIsSavedRecipesFilter(prev => !prev)}
-                          className={`min-h-[40px] px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 transition flex items-center gap-1.5 ${
+                          className={`clay-tactile min-h-[40px] px-3.5 py-1.5 text-xs font-bold whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
                             isSavedRecipesFilter
-                              ? 'bg-[#D47E93] text-white shadow-sm'
-                              : 'bg-white border border-[#F3DCE2] text-[#C96D84] hover:bg-[#FADDE4]/40'
+                              ? 'clay-btn-primary'
+                              : 'clay-btn-secondary text-[#C96D84]'
                           }`}
                         >
                           <Bookmark className={`w-3.5 h-3.5 ${isSavedRecipesFilter ? 'fill-white' : ''}`} />
@@ -2796,10 +2875,10 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => setIsZeroMissingOnly(prev => !prev)}
-                          className={`min-h-[40px] px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 transition flex items-center gap-1.5 ${
+                          className={`clay-tactile min-h-[40px] px-3.5 py-1.5 text-xs font-bold whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
                             isZeroMissingOnly
-                              ? 'bg-[#D47E93] text-white shadow-sm'
-                              : 'bg-white border border-[#F3DCE2] text-[#C96D84] hover:bg-[#FADDE4]/40'
+                              ? 'clay-btn-primary'
+                              : 'clay-btn-secondary text-[#C96D84]'
                           }`}
                           title="إظهار فقط الوجبات الجاهزة بنسبة 100% دون أي مكونات ناقصة"
                         >
@@ -2814,8 +2893,8 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => setIsVeryBudgetFilter(prev => !prev)}
-                          className={`min-h-[36px] px-2.5 py-1 rounded-xl font-bold transition whitespace-nowrap ${
-                            isVeryBudgetFilter ? 'bg-[#D47E93] text-white' : 'bg-white border border-[#F3DCE2] text-[#4A353B]'
+                          className={`clay-tactile min-h-[36px] px-3 py-1 rounded-xl font-bold whitespace-nowrap ${
+                            isVeryBudgetFilter ? 'clay-btn-primary' : 'clay-btn-secondary text-[#4A353B]'
                           }`}
                         >
                           💰 اقتصادي جداً
@@ -2823,8 +2902,8 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => setIsQuickFilter(prev => !prev)}
-                          className={`min-h-[36px] px-2.5 py-1 rounded-xl font-bold transition whitespace-nowrap ${
-                            isQuickFilter ? 'bg-[#D47E93] text-white' : 'bg-white border border-[#F3DCE2] text-[#4A353B]'
+                          className={`clay-tactile min-h-[36px] px-3 py-1 rounded-xl font-bold whitespace-nowrap ${
+                            isQuickFilter ? 'clay-btn-primary' : 'clay-btn-secondary text-[#4A353B]'
                           }`}
                         >
                           ⚡ وجبات سريعة
@@ -2832,8 +2911,8 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => setUsesLeftoversFilter(prev => !prev)}
-                          className={`min-h-[36px] px-2.5 py-1 rounded-xl font-bold transition whitespace-nowrap ${
-                            usesLeftoversFilter ? 'bg-[#D47E93] text-white' : 'bg-white border border-[#F3DCE2] text-[#4A353B]'
+                          className={`clay-tactile min-h-[36px] px-3 py-1 rounded-xl font-bold whitespace-nowrap ${
+                            usesLeftoversFilter ? 'clay-btn-primary' : 'clay-btn-secondary text-[#4A353B]'
                           }`}
                         >
                           ♻️ استغلال بواقي الأكل
@@ -2847,8 +2926,8 @@ export default function App() {
                         );
                         return (
                           <>
-                            <div className="flex items-center justify-between text-[11px] text-[#8E757C]">
-                              <span>عدد الوصفات: {filteredLibraryRecipes.length}</span>
+                            <div className="flex items-center justify-between text-[11px] text-[#8E757C] px-0.5">
+                              <span className="tabular-nums">عدد الوصفات: {filteredLibraryRecipes.length}</span>
                               {(isSavedRecipesFilter || mealFilter !== 'all' || isZeroMissingOnly || isVeryBudgetFilter || isQuickFilter || usesLeftoversFilter || normalizedQuery) && (
                                 <button
                                   type="button"
@@ -2867,13 +2946,13 @@ export default function App() {
                                 </button>
                               )}
                             </div>
-                            <div className="space-y-2">
+                            <div className="space-y-2.5">
                               {filteredLibraryRecipes.map(({ recipe, scaledCost, availableCount, totalCount }) => {
                                 const isSaved = savedRecipeIds.includes(recipe.id);
                                 return (
-                                  <div key={recipe.id} className="flex w-full items-center gap-2 rounded-2xl border border-[#F3DCE2] bg-white p-2.5 shadow-sm transition hover:border-[#D47E93]">
+                                  <div key={recipe.id} className="clay-card clay-tactile flex w-full items-center gap-2.5 p-2.5 hover:border-[#D47E93]">
                                     <button type="button" onClick={() => setSelectedRecipeModal(recipe)} className="flex min-w-0 flex-1 items-center gap-3 text-right">
-                                      <span className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-[#FADDE4]/50">
+                                      <span className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-[#FADDE4]/50 border border-[#F3DCE2]">
                                         {recipe.imageUrl && !brokenImages[recipe.id] ? (
                                           <img
                                             src={recipe.imageUrl}
@@ -2893,8 +2972,8 @@ export default function App() {
                                       </span>
                                       <span className="min-w-0 flex-1">
                                         <strong className="block truncate text-sm text-[#4A353B]">{recipe.name}</strong>
-                                        <span className="mt-1 block text-[10px] text-[#8E757C]">{recipe.mealType === 'breakfast' ? 'فطار' : recipe.mealType === 'lunch' ? 'غداء' : 'عشاء'} · {recipe.prepTimeMinutes} دقيقة · لـ {familySize} أفراد</span>
-                                        <span className="mt-0.5 block text-[10px] font-semibold text-[#C96D84]">
+                                        <span className="mt-1 block text-[10px] text-[#8E757C] tabular-nums">{recipe.mealType === 'breakfast' ? 'فطار' : recipe.mealType === 'lunch' ? 'غداء' : 'عشاء'} · {recipe.prepTimeMinutes} دقيقة · لـ {familySize} أفراد</span>
+                                        <span className="mt-0.5 block text-[10px] font-bold text-[#C96D84] tabular-nums">
                                           ~{scaledCost} ج.م · متوفر {availableCount} من {totalCount}
                                         </span>
                                       </span>
@@ -2904,10 +2983,10 @@ export default function App() {
                                       onClick={() => toggleSaveRecipe(recipe.id)}
                                       aria-label={isSaved ? 'إزالة من المحفوظات' : 'حفظ الوصفة'}
                                       title={isSaved ? 'إزالة من المحفوظات' : 'حفظ الوصفة'}
-                                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition ${
+                                      className={`clay-tactile flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${
                                         isSaved
-                                          ? 'border-[#E8A8B7] bg-[#FADDE4] text-[#C96D84]'
-                                          : 'border-[#F3DCE2] bg-[#FFF8FA] text-[#8E757C] hover:bg-[#FADDE4]/40'
+                                          ? 'clay-icon-well text-[#C96D84]'
+                                          : 'border border-[#F3DCE2] bg-[#FFF8FA] text-[#8E757C] hover:bg-[#FADDE4]/40'
                                       }`}
                                     >
                                       <Bookmark className={`h-4 w-4 ${isSaved ? 'fill-[#C96D84]' : ''}`} />
@@ -2916,7 +2995,7 @@ export default function App() {
                                 );
                               })}
                               {filteredLibraryRecipes.length === 0 && (
-                                <div className="rounded-2xl border border-dashed border-[#F3DCE2] bg-white p-6 text-center text-xs text-[#8E757C]">
+                                <div className="clay-card-cream p-6 text-center text-xs text-[#8E757C]">
                                   {isSavedRecipesFilter
                                     ? 'لسه مفيش وصفات محفوظة. اضغطي على علامة الحفظ بجانب أي وصفة للرجوع لها بدون نت.'
                                     : 'ملقيناش وصفة مطابقة للفلاتر الحالية. جرّبي تغيير البحث أو إظهار الكل.'}
@@ -2929,69 +3008,99 @@ export default function App() {
                     </section>
                   ) : (
                     <>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {/* Soft-3D Kitchen Hero Card featuring Custom 3D Ceramic Cooking Pot */}
+                  <div className="clay-card-soft p-3.5 bg-gradient-to-br from-[#FFF1E8] via-[#FADDE4] to-[#F3DCE2] flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="clay-icon-well w-12 h-12 rounded-2xl flex items-center justify-center shrink-0">
+                        <Kitchen3DIcon className="w-9 h-9" />
+                      </span>
+                      <div className="min-w-0">
+                        <span className="text-[11px] font-black text-[#C96D84] block">مطبخ تدبيرة — كل جنيه ليه قيمة 💛</span>
+                        <span className="text-[11px] text-[#4A353B]/80 block mt-0.5 leading-snug">
+                          تكلفة الوجبة التقديرية ومقادير الأكل حسب عدد أفراد بيتك 🇪🇬
+                        </span>
+                      </div>
+                    </div>
+                    <span className="shrink-0 rounded-xl bg-[#FFF8FA]/90 border border-[#D9AE72]/50 text-[#4A353B] font-black text-[11px] px-2.5 py-1 shadow-2xs">
+                      ج.م EGP
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <button
                       type="button"
                       onClick={() => { setIsSavedRecipesFilter(false); setKitchenView('offline'); }}
-                      className="flex w-full items-center justify-between rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 text-right transition hover:bg-[#FADDE4]/25"
+                      className="clay-card clay-tactile flex w-full items-center justify-between p-3.5 text-right"
                     >
-                      <span className="flex items-center gap-2">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FADDE4] text-[#C96D84]"><BookOpen className="h-5 w-5" /></span>
-                        <span><strong className="block text-xs text-[#4A353B]">مكتبة الوصفات</strong><small className="mt-0.5 block text-[10px] text-[#8E757C]">وصفات مجانية جاهزة داخل التطبيق</small></span>
+                      <span className="flex items-center gap-2.5">
+                        <span className="clay-icon-well flex h-10 w-10 items-center justify-center rounded-2xl shrink-0">
+                          <Kitchen3DIcon className="h-7 w-7" />
+                        </span>
+                        <span>
+                          <strong className="block text-xs font-extrabold text-[#4A353B]">مكتبة الوصفات</strong>
+                          <small className="mt-0.5 block text-[10px] text-[#8E757C]">وصفات مجانية جاهزة داخل التطبيق</small>
+                        </span>
                       </span>
-                      <ChevronRight className="h-4 w-4 text-[#C96D84]" />
+                      <ChevronRight className="h-4 w-4 text-[#C96D84] shrink-0" />
                     </button>
                     <button
                       type="button"
                       onClick={() => { setIsSavedRecipesFilter(true); setKitchenView('offline'); }}
-                      className="flex w-full items-center justify-between rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 text-right transition hover:bg-[#FADDE4]/25"
+                      className="clay-card clay-tactile flex w-full items-center justify-between p-3.5 text-right"
                     >
-                      <span className="flex items-center gap-2">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FADDE4] text-[#C96D84]"><Bookmark className="h-5 w-5" /></span>
-                        <span><strong className="block text-xs text-[#4A353B]">الوجبات المحفوظة ({savedRecipeIds.length})</strong><small className="mt-0.5 block text-[10px] text-[#8E757C]">وصفاتك المفضلة بدون إنترنت</small></span>
+                      <span className="flex items-center gap-2.5">
+                        <span className="clay-icon-well flex h-10 w-10 items-center justify-center rounded-2xl shrink-0">
+                          <Bookmark3DIcon className="h-7 w-7" />
+                        </span>
+                        <span>
+                          <strong className="block text-xs font-extrabold text-[#4A353B] tabular-nums">الوجبات المحفوظة ({savedRecipeIds.length})</strong>
+                          <small className="mt-0.5 block text-[10px] text-[#8E757C]">وصفاتك المفضلة بدون إنترنت</small>
+                        </span>
                       </span>
-                      <ChevronRight className="h-4 w-4 text-[#C96D84]" />
+                      <ChevronRight className="h-4 w-4 text-[#C96D84] shrink-0" />
                     </button>
                   </div>
-                  <button type="button" onClick={() => setKitchenView('online')} className="flex w-full items-center justify-between rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-3 text-right transition hover:bg-[#FADDE4]/25">
-                    <span className="flex items-center gap-2">
-                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#FADDE4] text-[#C96D84]"><Mic className="h-5 w-5" /></span>
-                      <span><strong className="block text-xs text-[#4A353B]">ابحث عن وصفة أونلاين 🎙️</strong><small className="mt-0.5 block text-[10px] text-[#8E757C]">اتكلم أو اكتب اسم الأكلة، واسمع طريقة التحضير</small></span>
+
+                  <button
+                    type="button"
+                    onClick={() => setKitchenView('online')}
+                    className="clay-card-cream clay-tactile flex w-full items-center justify-between p-3.5 text-right"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <span className="clay-icon-well flex h-10 w-10 items-center justify-center rounded-2xl shrink-0">
+                        <VoiceMic3DIcon className="h-7 w-7" />
+                      </span>
+                      <span>
+                        <strong className="block text-xs font-extrabold text-[#4A353B]">ابحث عن وصفة أونلاين 🎙️</strong>
+                        <small className="mt-0.5 block text-[10px] text-[#8E757C]">اتكلم أو اكتب اسم الأكلة، واسمع طريقة التحضير</small>
+                      </span>
                     </span>
-                    <ChevronRight className="h-4 w-4 text-[#C96D84]" />
+                    <ChevronRight className="h-4 w-4 text-[#C96D84] shrink-0" />
                   </button>
-                  {/* Brand Concept Motto Card */}
-                  <div className="bg-gradient-to-br from-[#E8A8B7] to-[#D47E93] text-white p-3 rounded-2xl shadow-sm flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-black text-white block">تدبيرة — كل جنيه ليه قيمة 💛</span>
-                      <span className="text-[10px] text-[#FFF8FA]">تكلفة الوجبة التقديرية ومقادير الأكل حسب عدد أفراد بيتك 🇪🇬</span>
-                    </div>
-                    <span className="text-xs bg-white/25 text-white font-black px-2 py-0.5 rounded-lg">ج.م EGP</span>
-                  </div>
 
                   {/* Phase 4D: Weekly Meal Plan Banner & Feature Gate */}
-                  <div className="bg-white rounded-2xl border border-[#F3DCE2] shadow-sm p-3.5 space-y-3">
+                  <div className="clay-card p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center shrink-0">
-                          <CalendarCheck className="w-4 h-4" />
+                      <div className="flex items-center gap-2.5">
+                        <div className="clay-icon-well w-10 h-10 rounded-2xl flex items-center justify-center shrink-0">
+                          <Calendar3DIcon className="w-7 h-7" />
                         </div>
                         <div>
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <h3 className="font-extrabold text-xs text-[#4A353B]">خطة وجبات الأسبوع التوفيرية الكاملة</h3>
                             {isWeeklyPlanUnlocked ? (
-                              <span className="bg-[#FADDE4] text-[#C96D84] text-[10px] font-bold px-1.5 py-0.2 rounded-md flex items-center gap-0.5">
+                              <span className="bg-[#A8B8A0]/25 text-[#4A353B] border border-[#A8B8A0]/45 text-[10px] font-bold px-2 py-0.5 rounded-lg flex items-center gap-0.5">
                                 <Unlock className="w-2.5 h-2.5" />
                                 <span>مفتوحة ✓</span>
                               </span>
                             ) : (
-                              <span className="bg-[#FADDE4] text-[#C96D84] text-[10px] font-bold px-1.5 py-0.2 rounded-md flex items-center gap-0.5">
+                              <span className="bg-[#FADDE4] text-[#C96D84] text-[10px] font-bold px-2 py-0.5 rounded-lg flex items-center gap-0.5">
                                 <Lock className="w-2.5 h-2.5" />
                                 <span>مقفولة</span>
                               </span>
                             )}
                           </div>
-                          <p className="text-[10px] text-[#8E757C] mt-0.5">
+                          <p className="text-[10px] text-[#8E757C] mt-0.5 tabular-nums">
                             جدول وجبات السبت إلى الجمعة (فطار، غداء، عشاء) لـ {familySize} أفراد مع جدول التسوق المجمع.
                           </p>
                         </div>
@@ -3015,13 +3124,13 @@ export default function App() {
 
                     {!isWeeklyPlanUnlocked ? (
                       /* Locked State: Rewarded Ad Entry Point */
-                      <div className="bg-[#FFF8FA] p-3 rounded-xl border border-[#F3DCE2] space-y-2.5">
-                        <div className="flex items-center justify-between text-xs">
+                      <div className="clay-inset p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between text-xs gap-2">
                           <span className="font-bold text-[#4A353B] flex items-center gap-1">
-                            <Sparkles className="w-3.5 h-3.5 text-[#C96D84]" />
+                            <Sparkles className="w-3.5 h-3.5 text-[#D9AE72]" />
                             <span>فتح جدول وجبات 7 أيام وجدول التسوق المجمع</span>
                           </span>
-                          <span className="text-[10px] bg-[#FADDE4] text-[#C96D84] font-bold px-1.5 py-0.5 rounded">
+                          <span className="text-[10px] bg-[#D9AE72]/20 border border-[#D9AE72]/40 text-[#4A353B] font-extrabold px-2 py-0.5 rounded-lg shrink-0">
                             مجاني بمكافأة 🎁
                           </span>
                         </div>
@@ -3031,7 +3140,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={handleRequestRewardedAd}
-                          className="w-full bg-[#D47E93] hover:bg-[#C96D84] text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm"
+                          className="clay-btn-primary w-full min-h-[44px] font-extrabold py-2.5 px-3 text-xs flex items-center justify-center gap-2"
                         >
                           <Play className="w-3.5 h-3.5 text-white fill-white" />
                           <span>شاهد إعلاناً قصيراً لفتح جدول وجبات الأسبوع</span>
@@ -3043,18 +3152,18 @@ export default function App() {
                       </div>
                     ) : (
                       /* Unlocked State: Full 7-Day Interactive Plan & Consolidated Shopping */
-                      <div className="space-y-3 pt-1 border-t border-[#F3DCE2]">
+                      <div className="space-y-3 pt-2 border-t border-[#F3DCE2]">
                         {/* Days Horizontal Chips */}
-                        <div className="flex gap-1 overflow-x-auto pb-1 text-[11px]">
+                        <div className="flex gap-1.5 overflow-x-auto pb-1 text-[11px]">
                           {WEEKLY_DAYS_SCHEDULE.map(day => (
                             <button
                               key={day.dayId}
                               type="button"
                               onClick={() => setSelectedPlanDayId(day.dayId)}
-                              className={`px-2.5 py-1 rounded-xl font-bold whitespace-nowrap transition ${
+                              className={`clay-tactile px-3 py-1.5 rounded-xl font-bold whitespace-nowrap ${
                                 selectedPlanDayId === day.dayId
-                                  ? 'bg-[#D47E93] text-white shadow-xs'
-                                  : 'bg-[#FFF8FA] border border-[#F3DCE2] text-[#4A353B] hover:bg-[#FADDE4]/40'
+                                  ? 'clay-btn-primary'
+                                  : 'clay-btn-secondary text-[#4A353B]'
                               }`}
                             >
                               <span>{day.dayName}</span>
@@ -3073,29 +3182,29 @@ export default function App() {
                                            (dRecipe ? calculateRecipeScaledCost(dRecipe, familySize) : 0);
 
                           return (
-                            <div className="bg-[#FFF8FA] p-3 rounded-xl border border-[#F3DCE2] space-y-2.5">
-                              <div className="flex items-center justify-between pb-1.5 border-b border-[#F3DCE2]">
+                            <div className="clay-inset p-3.5 space-y-2.5">
+                              <div className="flex items-center justify-between pb-2 border-b border-[#F3DCE2]">
                                 <div>
                                   <span className="font-extrabold text-xs text-[#4A353B]">جدول يوم {activeDay.dayName}</span>
                                   <span className="text-[10px] text-[#8E757C] block">{activeDay.theme}</span>
                                 </div>
-                                <span className="bg-[#FADDE4] text-[#C96D84] font-bold text-[11px] px-2 py-0.5 rounded-lg border border-[#F3DCE2]">
+                                <span className="bg-[#FADDE4] text-[#C96D84] font-bold text-[11px] px-2.5 py-0.5 rounded-lg border border-[#F3DCE2] tabular-nums">
                                   تكلفة اليوم: ~{dayTotal} ج.م
                                 </span>
                               </div>
 
-                              <div className="space-y-1.5 text-xs">
+                              <div className="space-y-2 text-xs">
                                 {/* Breakfast */}
                                 {bRecipe && (
                                   <div
                                     onClick={() => setSelectedRecipeModal(bRecipe)}
-                                    className="bg-white p-2 rounded-lg border border-[#F3DCE2] flex items-center justify-between cursor-pointer hover:border-[#D47E93] transition"
+                                    className="clay-card clay-tactile p-2.5 flex items-center justify-between cursor-pointer hover:border-[#D47E93]"
                                   >
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-[10px] bg-[#FADDE4] text-[#C96D84] font-bold px-1.5 py-0.2 rounded">فطار</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] bg-[#FFF1E8] border border-[#D9AE72]/40 text-[#4A353B] font-bold px-2 py-0.5 rounded-lg">فطار</span>
                                       <span className="font-bold text-[#4A353B] text-[11px] truncate max-w-[170px]">{bRecipe.name}</span>
                                     </div>
-                                    <span className="text-[10px] text-[#C96D84] font-bold">~{calculateRecipeScaledCost(bRecipe, familySize)} ج.م</span>
+                                    <span className="text-[10px] text-[#C96D84] font-extrabold tabular-nums">~{calculateRecipeScaledCost(bRecipe, familySize)} ج.م</span>
                                   </div>
                                 )}
 
@@ -3103,13 +3212,13 @@ export default function App() {
                                 {lRecipe && (
                                   <div
                                     onClick={() => setSelectedRecipeModal(lRecipe)}
-                                    className="bg-white p-2 rounded-lg border border-[#F3DCE2] flex items-center justify-between cursor-pointer hover:border-[#D47E93] transition"
+                                    className="clay-card clay-tactile p-2.5 flex items-center justify-between cursor-pointer hover:border-[#D47E93]"
                                   >
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-[10px] bg-[#FADDE4] text-[#C96D84] font-bold px-1.5 py-0.2 rounded">غداء</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] bg-[#FADDE4] text-[#C96D84] font-bold px-2 py-0.5 rounded-lg">غداء</span>
                                       <span className="font-bold text-[#4A353B] text-[11px] truncate max-w-[170px]">{lRecipe.name}</span>
                                     </div>
-                                    <span className="text-[10px] text-[#C96D84] font-bold">~{calculateRecipeScaledCost(lRecipe, familySize)} ج.م</span>
+                                    <span className="text-[10px] text-[#C96D84] font-extrabold tabular-nums">~{calculateRecipeScaledCost(lRecipe, familySize)} ج.م</span>
                                   </div>
                                 )}
 
@@ -3117,13 +3226,13 @@ export default function App() {
                                 {dRecipe && (
                                   <div
                                     onClick={() => setSelectedRecipeModal(dRecipe)}
-                                    className="bg-white p-2 rounded-lg border border-[#F3DCE2] flex items-center justify-between cursor-pointer hover:border-[#D47E93] transition"
+                                    className="clay-card clay-tactile p-2.5 flex items-center justify-between cursor-pointer hover:border-[#D47E93]"
                                   >
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-[10px] bg-[#FADDE4] text-[#C96D84] font-bold px-1.5 py-0.2 rounded">عشاء</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] bg-[#A8B8A0]/25 text-[#4A353B] font-bold px-2 py-0.5 rounded-lg">عشاء</span>
                                       <span className="font-bold text-[#4A353B] text-[11px] truncate max-w-[170px]">{dRecipe.name}</span>
                                     </div>
-                                    <span className="text-[10px] text-[#C96D84] font-bold">~{calculateRecipeScaledCost(dRecipe, familySize)} ج.م</span>
+                                    <span className="text-[10px] text-[#C96D84] font-extrabold tabular-nums">~{calculateRecipeScaledCost(dRecipe, familySize)} ج.م</span>
                                   </div>
                                 )}
                               </div>
@@ -3136,7 +3245,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => setIsConsolidatedShoppingModalOpen(true)}
-                            className="flex-1 bg-white hover:bg-[#FFF8FA] text-[#C96D84] font-bold py-2 px-2.5 rounded-xl text-[11px] border border-[#F3DCE2] flex items-center justify-center gap-1.5 transition"
+                            className="clay-btn-secondary clay-tactile flex-1 min-h-[42px] text-[#C96D84] font-extrabold py-2 px-2.5 text-[11px] flex items-center justify-center gap-1.5"
                           >
                             <CalendarCheck className="w-3.5 h-3.5" />
                             <span>جدول التسوق المجمع 📋</span>
@@ -3144,9 +3253,9 @@ export default function App() {
                           <button
                             type="button"
                             onClick={handleAddConsolidatedPlanToShopping}
-                            className="flex-1 bg-[#D47E93] hover:bg-[#C96D84] text-white font-bold py-2 px-2.5 rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition shadow-xs"
+                            className="clay-btn-primary flex-1 min-h-[42px] font-extrabold py-2 px-2.5 text-[11px] flex items-center justify-center gap-1.5"
                           >
-                            <ShoppingCart className="w-3.5 h-3.5" />
+                            <Shopping3DIcon className="w-4 h-4 shrink-0" />
                             <span>+ مقادير الأسبوع للمشتريات</span>
                           </button>
                         </div>
@@ -3155,10 +3264,10 @@ export default function App() {
                   </div>
 
                   {/* Ingredients Drawer */}
-                  <div className="bg-white p-3.5 rounded-2xl border border-[#F3DCE2] shadow-sm">
-                    <div className="flex items-center justify-between mb-2 gap-2">
+                  <div className="clay-card p-4">
+                    <div className="flex items-center justify-between mb-2.5 gap-2">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-[#4A353B]">
+                        <span className="text-xs font-extrabold text-[#4A353B] tabular-nums">
                           المكونات المتوفرة في بيتك ({selectedIngredients.length}):
                         </span>
                       </div>
@@ -3168,10 +3277,10 @@ export default function App() {
                         <button
                           type="button"
                           onClick={voiceState === 'listening' ? stopVoiceRecognition : startVoiceRecognition}
-                          className={`flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-xl transition ${
+                          className={`clay-tactile flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-xl transition ${
                             voiceState === 'listening'
                               ? 'bg-red-600 text-white animate-pulse shadow-sm ring-2 ring-red-300'
-                              : 'bg-[#FADDE4] hover:bg-[#E8A8B7]/50 text-[#C96D84] border border-[#F3DCE2]'
+                              : 'clay-btn-secondary text-[#C96D84]'
                           }`}
                           title="اختيار المكونات بالصوت باللهجة المصرية"
                           aria-label="اختيار المكونات بالصوت"
@@ -3203,7 +3312,7 @@ export default function App() {
 
                     {/* Phase 4C: Voice Listening / Match Feedback Card */}
                     {voiceState !== 'idle' && voiceFeedback && (
-                      <div className={`mb-2.5 p-2 rounded-xl text-xs flex items-center justify-between border transition ${
+                      <div className={`mb-2.5 p-2.5 rounded-xl text-xs flex items-center justify-between border transition ${
                         voiceState === 'listening'
                           ? 'bg-red-50 border-red-200 text-red-900 animate-pulse'
                           : voiceState === 'success'
@@ -3240,9 +3349,9 @@ export default function App() {
                           <button
                             key={ing}
                             onClick={() => toggleIngredient(ing)}
-                            className={`text-xs px-2.5 py-1 rounded-lg font-medium transition flex items-center gap-1 ${
+                            className={`clay-tactile text-xs px-2.5 py-1.5 rounded-xl font-bold flex items-center gap-1 ${
                               isSelected
-                                ? 'bg-[#D47E93] text-white shadow-sm'
+                                ? 'clay-btn-primary'
                                 : 'bg-[#FFF8FA] border border-[#F3DCE2] text-[#4A353B] hover:bg-[#FADDE4]/40'
                             }`}
                           >
@@ -3254,7 +3363,7 @@ export default function App() {
                     </div>
 
                     <ErrorBoundary fallbackTitle="تعذر تحميل مكتبة الاقتراحات الذكية">
-                      <React.Suspense fallback={<div className="rounded-xl bg-white border border-[#F3DCE2] p-3 text-center text-[11px] text-[#8E757C]">بنجهز اقتراحات الوجبات…</div>}>
+                      <React.Suspense fallback={<div className="clay-card-cream p-3 text-center text-[11px] text-[#8E757C]">بنجهز اقتراحات الوجبات…</div>}>
                         <IngredientRecipeFinder availableIngredients={selectedIngredients} familySize={familySize} />
                       </React.Suspense>
                     </ErrorBoundary>
@@ -3264,13 +3373,13 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setIsAddCustomRecipeModalOpen(true)}
-                    className="w-full bg-white border border-[#D47E93] text-[#C96D84] hover:bg-[#FADDE4]/40 font-bold py-2.5 px-3 rounded-2xl text-xs flex items-center justify-center gap-1.5 transition shadow-xs"
+                    className="clay-btn-secondary clay-tactile w-full min-h-[44px] text-[#C96D84] font-extrabold py-2.5 px-3 text-xs flex items-center justify-center gap-1.5"
                   >
                     <Plus className="w-4 h-4" />
                     <span>أضف أكلتك الخاصة 🍳</span>
                   </button>
 
-                  <div className="rounded-2xl border border-[#F3DCE2] bg-[#FFFFFF] p-4 text-center text-sm text-[#4A353B]">
+                  <div className="clay-card-cream p-4 text-center text-xs text-[#4A353B]">
                     كل وصفات تدبيرة موجودة في مكان واحد داخل <strong>مكتبة الوصفات</strong> بالأعلى. افتح المكتبة للبحث والاختيار وعرض المقادير والخطوات.
                   </div>
                     </>
@@ -3282,21 +3391,23 @@ export default function App() {
               {/* === TAB 2: تدبيرة الفلوس ومتابعة المصاريف === */}
               {/* ======================================================== */}
               {activeTab === 'budget' && (
-                <div className="space-y-4">
-                  {/* Core Brand Identity Hero Banner */}
-                  <div className="bg-gradient-to-br from-[#E8A8B7] to-[#D47E93] text-white p-3.5 rounded-2xl shadow-sm border-b-2 border-[#F3DCE2] space-y-1">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">💛</span>
-                        <h2 className="text-sm font-black text-white">تدبيرة — كل جنيه ليه قيمة</h2>
-                      </div>
-                      <span className="bg-white/20 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-md">
-                        ميزانية البيت 🇪🇬
+                <div className="space-y-4 overflow-x-hidden">
+                  {/* Soft-3D Budget Hero Banner with Custom Dusty-Rose Leather Wallet & ج.م Coin Illustration */}
+                  <div className="clay-card-soft rounded-[28px] p-4 bg-gradient-to-br from-[#FFF1E8] via-[#FADDE4] to-[#F3DCE2] flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="clay-icon-well w-13 h-13 rounded-2xl flex items-center justify-center shrink-0">
+                        <Budget3DIcon className="w-10 h-10" />
                       </span>
+                      <div className="min-w-0">
+                        <h2 className="text-base font-black text-[#4A353B]">تدبيرة — كل جنيه ليه قيمة 💛</h2>
+                        <p className="text-[11px] text-[#4A353B]/80 font-medium mt-0.5 leading-5">
+                          وفّر بذكاء، ودبّر بيتك، وخلي كل جنيه في مكانه.
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-xs text-[#FFF8FA] font-medium">
-                      وفّر بذكاء، ودبّر بيتك، وخلي كل جنيه في مكانه.
-                    </p>
+                    <span className="shrink-0 bg-[#D9AE72]/25 border border-[#D9AE72]/50 text-[#4A353B] text-[10px] font-extrabold px-2.5 py-1 rounded-xl">
+                      ميزانية البيت 🇪🇬
+                    </span>
                   </div>
 
                   {/* Quick Expense Logger Action */}
@@ -3307,21 +3418,24 @@ export default function App() {
                       setExpenseDesc('');
                       setIsAddExpenseModalOpen(true);
                     }}
-                    className="w-full bg-[#D47E93] hover:bg-[#C96D84] text-white font-extrabold py-3 px-4 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md transition"
+                    className="clay-btn-primary w-full min-h-[46px] font-extrabold py-3 px-4 text-xs flex items-center justify-center gap-2"
                   >
                     <Plus className="w-4 h-4 text-white" />
                     <span>سجّلي مصروف جديد +</span>
                   </button>
 
                   {/* Smart Financial Advisor Banner */}
-                  <div className="bg-[#FFFFFF] p-3.5 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center shrink-0">
-                        <Lightbulb className="w-4 h-4" />
+                  <div className="clay-card-cream p-3.5 space-y-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="clay-icon-well w-10 h-10 rounded-2xl flex items-center justify-center shrink-0">
+                        <SavingsGold3DIcon className="w-7 h-7" />
                       </div>
-                      <span className="font-extrabold text-xs text-[#4A353B]">💡 توجيه ذكي للميزانية</span>
+                      <div>
+                        <span className="font-extrabold text-xs text-[#4A353B] block">💡 توجيه ذكي للميزانية</span>
+                        <span className="text-[10px] text-[#8E757C]">متابعة فورية لمعدل الصرف الشهري</span>
+                      </div>
                     </div>
-                    <p className="text-xs font-bold text-[#4A353B] leading-relaxed pr-9">
+                    <p className="text-xs font-bold text-[#4A353B] leading-relaxed">
                       {(() => {
                         const bAmt = parseFloat(budgetAmount) || 2500;
                         const spent = totalSpentAll;
@@ -3342,15 +3456,15 @@ export default function App() {
                   </div>
 
                   {/* Feature 3: Monthly Payday Cycle & Countdown Widget */}
-                  <div className="bg-gradient-to-br from-[#E8A8B7] to-[#D47E93] text-white p-3.5 rounded-2xl shadow-sm space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-xs flex items-center justify-center text-white">
-                          <Calendar className="w-4 h-4" />
+                  <div className="clay-card bg-gradient-to-br from-[#DF8FA2] via-[#D47E93] to-[#C96D84] text-white p-4 space-y-2.5 border-white/30">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="clay-icon-well w-10 h-10 rounded-2xl flex items-center justify-center shrink-0">
+                          <Calendar3DIcon className="w-7 h-7" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <span className="text-[10px] text-[#FFF8FA] block font-medium">دورة الراتب الشهري</span>
-                          <span className="text-xs font-extrabold text-white">
+                          <span className="text-xs font-extrabold text-white block truncate">
                             {paydayAnalytics.isConfigured ? (
                               paydayAnalytics.isToday ? (
                                 <span className="text-[#FFF8FA]">النهارده موعد الراتب 🎉</span>
@@ -3365,24 +3479,25 @@ export default function App() {
                       </div>
 
                       <button
+                        type="button"
                         onClick={() => {
                           setTempPaydayInput(paydayDay ? paydayDay.toString() : '25');
                           setIsPaydayModalOpen(true);
                         }}
-                        className="text-[11px] bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1 text-white border border-white/25"
+                        className="clay-btn-secondary clay-tactile text-[11px] px-2.5 py-1.5 rounded-xl font-extrabold flex items-center gap-1 text-[#C96D84] shrink-0"
                         title="تعديل أو تحديد يوم نزول الراتب"
                       >
-                        <Clock className="w-3 h-3 text-white" />
+                        <Clock className="w-3 h-3 text-[#C96D84]" />
                         <span>{paydayAnalytics.isConfigured ? `يوم ${paydayAnalytics.paydayDay}` : 'تحديد اليوم'}</span>
                       </button>
                     </div>
 
                     {paydayAnalytics.isConfigured ? (
-                      <div className="pt-2 border-t border-white/20 flex items-center justify-between text-xs">
-                        <div>
+                      <div className="pt-2.5 border-t border-white/25 flex items-center justify-between text-xs gap-2">
+                        <div className="min-w-0">
                           <span className="text-[10px] text-[#FFF8FA] block">الحد المقترح للصرف اليومي:</span>
                           {!paydayAnalytics.isBudgetExhausted && paydayAnalytics.dailyCap !== null ? (
-                            <div className="flex items-baseline gap-1">
+                            <div className="flex items-baseline gap-1 flex-wrap tabular-nums">
                               <span className="text-base font-black text-white">~{paydayAnalytics.dailyCap}</span>
                               <span className="text-[10px] text-white">ج.م/يوم</span>
                               <span className="text-[10px] text-white/90 mr-1 font-normal">
@@ -3396,24 +3511,25 @@ export default function App() {
                           )}
                         </div>
 
-                        <div className="text-left">
+                        <div className="text-left shrink-0">
                           <span className="text-[10px] text-[#FFF8FA] block">الموعد المحدد:</span>
-                          <span className="text-xs font-bold text-white">
+                          <span className="text-xs font-bold text-white tabular-nums">
                             {paydayAnalytics.effectivePayday} في الشهر
                           </span>
                         </div>
                       </div>
                     ) : (
-                      <div className="pt-2 border-t border-white/20 flex items-center justify-between text-xs">
-                        <p className="text-[11px] text-[#FFF8FA] leading-tight">
+                      <div className="pt-2.5 border-t border-white/25 flex items-center justify-between text-xs gap-2">
+                        <p className="text-[11px] text-[#FFF8FA] leading-tight min-w-0">
                           اختر يوم نزول الراتب لحساب الأيام المتبقية تلقائياً وتحديد حد الصرف اليومي الذكي.
                         </p>
                         <button
+                          type="button"
                           onClick={() => {
                             setTempPaydayInput('25');
                             setIsPaydayModalOpen(true);
                           }}
-                          className="bg-white hover:bg-[#FADDE4] text-[#C96D84] font-extrabold text-[11px] px-2.5 py-1 rounded-lg shrink-0 mr-2 transition"
+                          className="clay-btn-gold clay-tactile font-extrabold text-[11px] px-3 py-1.5 rounded-xl shrink-0"
                         >
                           ضبط الآن
                         </button>
@@ -3422,52 +3538,59 @@ export default function App() {
                   </div>
 
                   {/* Budget Input & Balance Cards */}
-                  <div className="bg-white p-4 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-3">
+                  <div className="clay-card p-4 space-y-3">
                     <div>
-                      <label className="text-xs font-bold text-[#4A353B] block mb-1">الميزانية الإجمالية المتاحة:</label>
+                      <label className="text-xs font-bold text-[#4A353B] block mb-1.5">الميزانية الإجمالية المتاحة:</label>
                       <div className="relative">
                         <input
                           type="number"
                           value={budgetAmount}
                           onChange={(e) => setBudgetAmount(e.target.value)}
                           placeholder="مثال: 2500"
-                          className="w-full text-lg font-extrabold text-[#4A353B] border border-[#F3DCE2] rounded-xl px-3 py-2 pr-12 focus:outline-none focus:border-[#D47E93]"
+                          className="clay-inset w-full text-lg font-black text-[#4A353B] px-3.5 py-2.5 pr-12 tabular-nums focus:outline-none focus:border-[#D47E93]"
                         />
-                        <span className="absolute left-3 top-2.5 font-bold text-sm text-[#8E757C]">ج.م</span>
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-extrabold text-xs text-[#C96D84] bg-[#D9AE72]/20 border border-[#D9AE72]/40 px-2 py-0.5 rounded-lg">
+                          ج.م
+                        </span>
                       </div>
                     </div>
 
                     {/* Financial Snapshot Tiles */}
-                    <div className="grid grid-cols-2 gap-2 pt-1 text-center">
-                      <div className="bg-[#FFF8FA] p-2.5 rounded-xl border border-[#F3DCE2]">
+                    <div className="grid grid-cols-2 gap-2.5 pt-1 text-center">
+                      <div className="clay-inset p-3">
                         <span className="text-[10px] text-[#8E757C] block">إجمالي المصروف الفعلي</span>
-                        <span className="text-sm font-black text-[#4A353B]">{totalSpentAll} ج.م</span>
+                        <span className="text-sm font-black text-[#4A353B] tabular-nums">{totalSpentAll} ج.م</span>
                       </div>
-                      <div className={`p-2.5 rounded-xl border ${
-                        totalRemainingAll >= 0 ? 'bg-[#FADDE4]/60 border-[#E8A8B7] text-[#C96D84]' : 'bg-red-50 border-red-200 text-red-700'
+                      <div className={`p-3 rounded-2xl border ${
+                        totalRemainingAll >= 0
+                          ? 'clay-card-cream border-[#A8B8A0]/50 text-[#4A353B]'
+                          : 'bg-red-50 border-red-200 text-red-700'
                       }`}>
                         <span className="text-[10px] text-[#8E757C] block">المتبقي في المحفظة</span>
-                        <span className="text-sm font-black">{totalRemainingAll} ج.م</span>
+                        <span className={`text-sm font-black tabular-nums ${totalRemainingAll >= 0 ? 'text-[#C96D84]' : ''}`}>
+                          {totalRemainingAll} ج.م
+                        </span>
                       </div>
                     </div>
                   </div>
 
                   {/* Feature 2: Visual Spending Donut Chart Card */}
-                  <div className="bg-white p-4 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-full bg-[#FADDE4] text-[#C96D84]">
-                          <PieChart className="w-4 h-4" />
+                  <div className="clay-card p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="clay-icon-well w-10 h-10 rounded-2xl flex items-center justify-center shrink-0">
+                          <Budget3DIcon className="w-7 h-7" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <h3 className="text-xs font-extrabold text-[#4A353B]">توزيع المصروف الفعلي حسب البنود</h3>
-                          <span className="text-[10px] text-[#8E757C]">تحليل إنفاق دورة الراتب الحالية ({payCycleRange.label})</span>
+                          <span className="text-[10px] text-[#8E757C] block truncate">تحليل إنفاق دورة الراتب الحالية ({payCycleRange.label})</span>
                         </div>
                       </div>
                       {selectedDonutSegmentId && (
                         <button
+                          type="button"
                           onClick={() => setSelectedDonutSegmentId(null)}
-                          className="text-[10px] text-[#C96D84] hover:text-[#4A353B] underline"
+                          className="text-[10px] font-bold text-[#C96D84] hover:text-[#4A353B] underline shrink-0"
                         >
                           إلغاء التحديد
                         </button>
@@ -3475,9 +3598,9 @@ export default function App() {
                     </div>
 
                     {totalSpentAll === 0 ? (
-                      <div className="py-6 px-4 text-center border border-dashed border-[#F3DCE2] rounded-xl space-y-2">
-                        <div className="w-10 h-10 rounded-full bg-[#FADDE4] mx-auto flex items-center justify-center text-[#C96D84]">
-                          <PieChart className="w-5 h-5" />
+                      <div className="clay-inset py-6 px-4 text-center space-y-2">
+                        <div className="clay-icon-well w-12 h-12 rounded-2xl mx-auto flex items-center justify-center">
+                          <Budget3DIcon className="w-8 h-8" />
                         </div>
                         <p className="text-xs font-bold text-[#4A353B]">لا توجد مصاريف مسجلة حتى الآن لرسم المخطط 📊</p>
                         <p className="text-[11px] text-[#8E757C] max-w-xs mx-auto leading-relaxed">
@@ -3532,32 +3655,32 @@ export default function App() {
                           {/* Center Text in Donut */}
                           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
                             <span className="text-[10px] text-[#8E757C] font-medium">إجمالي المصروف</span>
-                            <span className="text-base font-black text-[#4A353B] leading-tight">{totalSpentAll}</span>
+                            <span className="text-base font-black text-[#4A353B] leading-tight tabular-nums">{totalSpentAll}</span>
                             <span className="text-[10px] font-bold text-[#8E757C]">ج.م</span>
                           </div>
                         </div>
 
                         {/* Interactive Detail Panel */}
                         {selectedDonutSegment && (
-                          <div className="bg-[#FFF8FA] p-3 rounded-xl border border-[#F3DCE2] text-xs space-y-1.5 animate-fadeIn">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-1.5 font-bold text-[#4A353B]">
+                          <div className="clay-card-cream p-3 text-xs space-y-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 font-bold text-[#4A353B] min-w-0">
                                 <span
-                                  className="w-2.5 h-2.5 rounded-full inline-block"
+                                  className="w-2.5 h-2.5 rounded-full inline-block shrink-0"
                                   style={{
                                     backgroundColor: POWDER_PINK_DONUT_PALETTE[
                                       Math.max(0, donutSegments.findIndex(s => s.categoryId === selectedDonutSegment.categoryId)) % POWDER_PINK_DONUT_PALETTE.length
                                     ],
                                   }}
                                 />
-                                <span>{selectedDonutSegment.categoryName}</span>
+                                <span className="truncate">{selectedDonutSegment.categoryName}</span>
                               </div>
-                              <span className="bg-[#D47E93] text-white text-[10px] font-extrabold px-2 py-0.5 rounded-md">
+                              <span className="bg-[#D47E93] text-white text-[10px] font-extrabold px-2 py-0.5 rounded-lg shrink-0 tabular-nums">
                                 {selectedDonutSegment.sharePercentage}% من إجمالي الصرف
                               </span>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
+                            <div className="grid grid-cols-2 gap-2 pt-1 text-[11px] tabular-nums">
                               <div>
                                 <span className="text-[#8E757C] block">المنصرف الفعلي:</span>
                                 <span className="font-extrabold text-[#C96D84]">{selectedDonutSegment.spent} ج.م</span>
@@ -3567,7 +3690,7 @@ export default function App() {
                                 <span className="font-bold text-[#4A353B]">{selectedDonutSegment.allocated} ج.م</span>
                               </div>
                             </div>
-                            <div className="text-[10px] text-[#8E757C] pt-0.5">
+                            <div className="text-[10px] text-[#8E757C] pt-0.5 tabular-nums">
                               نسبة استهلاك ميزانية هذا البند: <span className="font-bold text-[#4A353B]">{selectedDonutSegment.budgetPercentage}%</span>
                             </div>
                           </div>
@@ -3583,20 +3706,21 @@ export default function App() {
                             return (
                               <button
                                 key={cat.id}
+                                type="button"
                                 onClick={() => {
                                   if (cat.spent > 0) {
                                     setSelectedDonutSegmentId(isSelected ? null : cat.id);
                                   }
                                 }}
-                                className={`p-1.5 rounded-lg text-right transition flex items-center justify-between ${
-                                  isSelected ? 'bg-[#FADDE4] border border-[#E8A8B7]' : 'hover:bg-[#FFF8FA]'
+                                className={`clay-tactile p-2 rounded-xl text-right flex items-center justify-between gap-1 ${
+                                  isSelected ? 'clay-card-soft border-[#D47E93]' : 'hover:bg-[#FFF8FA]'
                                 } ${cat.spent === 0 ? 'opacity-50 cursor-default' : 'cursor-pointer'}`}
                               >
-                                <div className="flex items-center gap-1.5 truncate">
+                                <div className="flex items-center gap-1.5 min-w-0">
                                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
                                   <span className="text-[11px] font-bold text-[#4A353B] truncate">{cat.name}</span>
                                 </div>
-                                <span className="text-[10px] font-black text-[#4A353B] shrink-0 mr-1">{cat.spent} ج.م</span>
+                                <span className="text-[10px] font-black text-[#4A353B] shrink-0 tabular-nums">{cat.spent} ج.م</span>
                               </button>
                             );
                           })}
@@ -3607,18 +3731,19 @@ export default function App() {
 
                   {/* Preset Shortcuts */}
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs px-1">
+                    <div className="flex items-center justify-between gap-2 text-xs px-1 flex-wrap">
                       <span className="font-bold text-[#4A353B]">نماذج ميزانية مقترحة:</span>
-                      <span className="text-[11px] text-[#C96D84] font-bold bg-[#FADDE4] px-2 py-0.5 rounded-md border border-[#F3DCE2] tabular-nums">
+                      <span className="text-[11px] text-[#4A353B] font-extrabold bg-[#D9AE72]/20 px-2.5 py-0.5 rounded-lg border border-[#D9AE72]/45 tabular-nums">
                         إجمالي المخصص: {budgetBreakdown.reduce((sum, item) => sum + item.allocated, 0)} ج.م
                       </span>
                     </div>
-                    <div className="flex gap-1.5 overflow-x-auto pb-1">
+                    <div className="flex gap-2 overflow-x-auto pb-1">
                       {BUDGET_PRESETS.map((preset, idx) => (
                         <button
                           key={idx}
+                          type="button"
                           onClick={() => handleApplyPresetAmounts(preset.percentages)}
-                          className="bg-white border border-[#F3DCE2] hover:border-[#D47E93] text-[#4A353B] text-xs px-2.5 py-1.5 rounded-xl font-bold whitespace-nowrap shadow-xs transition"
+                          className="clay-btn-secondary clay-tactile text-[#4A353B] text-xs px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0"
                         >
                           {preset.name}
                         </button>
@@ -3631,33 +3756,34 @@ export default function App() {
                     <div className="flex items-center justify-between text-xs px-1">
                       <span className="font-bold text-[#4A353B]">بنود الميزانية والإنفاق:</span>
                       <button
+                        type="button"
                         onClick={() => setIsAddCategoryModalOpen(true)}
-                        className="text-xs font-bold text-[#C96D84] flex items-center gap-1 hover:underline"
+                        className="text-xs font-extrabold text-[#C96D84] flex items-center gap-1 hover:underline"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>إضافة بند مخصص</span>
                       </button>
                     </div>
 
-                    {budgetBreakdown.map((cat, idx) => {
+                    {budgetBreakdown.map((cat) => {
                       const analytics = calculateCategoryAnalytics(cat.allocated, cat.spent);
 
                       return (
-                        <div key={cat.id} className="bg-white p-3.5 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-full bg-[#FADDE4] flex items-center justify-center text-[#C96D84]">
-                                {renderCategoryIcon(cat.iconName)}
+                        <div key={cat.id} className="clay-card p-3.5 space-y-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="clay-icon-well w-10 h-10 rounded-2xl flex items-center justify-center shrink-0">
+                                {renderCategoryIcon(cat.iconName, "w-7 h-7")}
                               </div>
-                              <div>
-                                <span className="font-bold text-sm text-[#4A353B] block">{cat.name}</span>
+                              <div className="min-w-0">
+                                <span className="font-extrabold text-sm text-[#4A353B] block truncate">{cat.name}</span>
                                 {cat.isCustom && (
-                                  <span className="text-[9px] bg-[#FADDE4] text-[#C96D84] px-1 py-0.2 rounded font-bold">مخصص</span>
+                                  <span className="text-[9px] bg-[#D9AE72]/25 text-[#4A353B] px-1.5 py-0.2 rounded-md font-bold">مخصص</span>
                                 )}
                               </div>
                             </div>
-                            <div className="text-left">
-                              <span className="bg-[#FADDE4] text-[#C96D84] text-xs font-extrabold px-2 py-0.5 rounded-md inline-block">
+                            <div className="text-left shrink-0 tabular-nums">
+                              <span className="bg-[#FADDE4] text-[#C96D84] text-xs font-extrabold px-2.5 py-0.5 rounded-lg inline-block">
                                 {cat.percentage}% من الميزانية
                               </span>
                               <span className="text-[10px] text-[#8E757C] block mt-0.5">
@@ -3667,7 +3793,7 @@ export default function App() {
                           </div>
 
                           {/* Amount, Spent & Remaining / Exceeded */}
-                          <div className="flex items-baseline justify-between text-xs pt-0.5">
+                          <div className="flex items-baseline justify-between text-xs pt-0.5 tabular-nums">
                             <div>
                               <span className="text-base font-black text-[#4A353B]">{cat.allocated} ج.م</span>
                               <span className="text-[#8E757C] text-[10px] mr-1">المخصص</span>
@@ -3681,7 +3807,7 @@ export default function App() {
                                   تجاوز بـ: {analytics.exceededAmount} ج.م
                                 </span>
                               ) : (
-                                <span className="text-[#C96D84] font-semibold text-[10px] block">
+                                <span className="text-[#4A353B] font-bold text-[10px] block">
                                   متبقي: {analytics.remainingAmount} ج.م
                                 </span>
                               )}
@@ -3689,16 +3815,18 @@ export default function App() {
                           </div>
 
                           {/* Dynamic Color Progress Bar */}
-                          <div className="w-full bg-[#FADDE4]/45 h-2.5 rounded-full overflow-hidden">
+                          <div className="clay-inset w-full h-3 rounded-full overflow-hidden p-0.5">
                             <div
-                              className={`h-full transition-all duration-300 ${
-                                analytics.colorStatus === 'red'
-                                  ? 'bg-red-500'
-                                  : analytics.colorStatus === 'amber'
-                                  ? 'bg-[#E8A8B7]'
-                                  : 'bg-[#D47E93]'
-                              }`}
-                              style={{ width: `${analytics.visualPercentage}%` }}
+                              className="h-full rounded-full transition-all duration-300"
+                              style={{
+                                width: `${analytics.visualPercentage}%`,
+                                background:
+                                  analytics.colorStatus === 'red'
+                                    ? 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)'
+                                    : analytics.colorStatus === 'amber'
+                                    ? 'linear-gradient(90deg, #D9AE72 0%, #C99654 100%)'
+                                    : 'linear-gradient(90deg, #E8A8B7 0%, #D47E93 100%)',
+                              }}
                               role="progressbar"
                               aria-valuenow={analytics.progressPercentage}
                               aria-valuemin={0}
@@ -3708,12 +3836,12 @@ export default function App() {
 
                           {/* Overrun Warning Badge (Only when spending > allocated) */}
                           {analytics.isOverBudget && (
-                            <div className="bg-red-50 text-red-700 text-[11px] font-bold px-2.5 py-1.5 rounded-xl flex items-center justify-between border border-red-200">
-                              <div className="flex items-center gap-1.5">
+                            <div className="bg-red-50 text-red-700 text-[11px] font-bold px-2.5 py-1.5 rounded-xl flex items-center justify-between border border-red-200 gap-2">
+                              <div className="flex items-center gap-1.5 min-w-0">
                                 <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-                                <span>تجاوز الميزانية بـ {analytics.exceededAmount} ج.م</span>
+                                <span className="truncate">تجاوز الميزانية بـ {analytics.exceededAmount} ج.م</span>
                               </div>
-                              <span className="text-[10px] bg-red-100 text-red-800 px-1.5 py-0.5 rounded font-extrabold">
+                              <span className="text-[10px] bg-red-100 text-red-800 px-1.5 py-0.5 rounded font-extrabold shrink-0 tabular-nums">
                                 {analytics.progressPercentage}% استهلاك
                               </span>
                             </div>
@@ -3726,7 +3854,7 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => handleUpdateAllocation(cat.id, -100)}
-                              className="min-h-[36px] bg-[#FFF8FA] border border-[#F3DCE2] hover:bg-[#FADDE4]/40 text-[#4A353B] font-extrabold text-xs px-2.5 py-1.5 rounded-lg transition shrink-0"
+                              className="clay-btn-secondary clay-tactile min-h-[38px] text-[#4A353B] font-extrabold text-xs px-2.5 py-1.5 rounded-xl shrink-0"
                               title="إنقاص 100 ج.م"
                             >
                               -100 ج.م
@@ -3743,7 +3871,7 @@ export default function App() {
                                   const parsed = raw === '' ? 0 : Math.max(0, Math.round(Number(raw) || 0));
                                   handleUpdateAllocation(cat.id, parsed, true);
                                 }}
-                                className="w-full min-h-[36px] text-center font-extrabold text-xs text-[#4A353B] bg-[#FFF8FA] border border-[#F3DCE2] rounded-lg px-2 py-1.5 pl-9 focus:outline-none focus:border-[#D47E93]"
+                                className="clay-inset w-full min-h-[38px] text-center font-black text-xs text-[#4A353B] px-2 py-1.5 pl-9 tabular-nums focus:outline-none focus:border-[#D47E93]"
                               />
                               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-[#8E757C] pointer-events-none">
                                 ج.م
@@ -3752,7 +3880,7 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => handleUpdateAllocation(cat.id, 100)}
-                              className="min-h-[36px] bg-[#FADDE4] hover:bg-[#E8A8B7]/50 text-[#C96D84] font-extrabold text-xs px-2.5 py-1.5 rounded-lg transition shrink-0"
+                              className="clay-btn-secondary clay-tactile min-h-[38px] text-[#C96D84] font-extrabold text-xs px-2.5 py-1.5 rounded-xl shrink-0"
                               title="زيادة 100 ج.م"
                             >
                               +100 ج.م
@@ -3763,8 +3891,9 @@ export default function App() {
                     })}
 
                     <button
+                      type="button"
                       onClick={handleSaveBudgetPlan}
-                      className="w-full bg-[#D47E93] hover:bg-[#C96D84] text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow transition"
+                      className="clay-btn-primary w-full min-h-[44px] font-extrabold py-2.5 px-4 text-xs flex items-center justify-center gap-1.5"
                     >
                       <Bookmark className="w-4 h-4 text-white" />
                       <span>حفظ خطة الميزانية في المحفوظات</span>
@@ -3772,16 +3901,16 @@ export default function App() {
                   </div>
 
                   {/* Expense Records Section */}
-                  <div className="bg-white p-4 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
+                  <div className="clay-card p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
                         <h3 className="font-extrabold text-xs text-[#4A353B]">سجل المصاريف الحقيقية:</h3>
                         <span className="text-[10px] text-[#8E757C]">{showAllExpenseHistory ? 'كل المصروفات المسجلة' : 'مصروفات دورة الراتب الحالية'}</span>
                       </div>
                       <button
                         type="button"
                         onClick={() => setShowAllExpenseHistory(value => !value)}
-                        className="text-[10px] font-bold text-[#C96D84] border border-[#F3DCE2] bg-[#FFF8FA] rounded-lg px-2.5 py-1"
+                        className="clay-btn-secondary clay-tactile text-[10px] font-bold text-[#C96D84] rounded-xl px-3 py-1.5 shrink-0"
                       >
                         {showAllExpenseHistory ? 'الدورة الحالية' : 'كل السجل'}
                       </button>
@@ -3789,7 +3918,7 @@ export default function App() {
 
                     <div className="text-[10px] text-[#8E757C] -mt-1">{showAllExpenseHistory ? 'كل السجل المالي' : `دورة الراتب الحالية: ${payCycleRange.label}`}</div>
                     {displayedExpenses.length === 0 ? (
-                      <div className="p-4 text-center text-xs text-[#8E757C] border border-dashed border-[#F3DCE2] rounded-xl">
+                      <div className="clay-inset p-4 text-center text-xs text-[#8E757C]">
                         {showAllExpenseHistory ? 'لا توجد مصروفات مسجلة حتى الآن.' : 'لا توجد مصروفات مسجلة في دورة الراتب الحالية. المصروفات السابقة محفوظة ولا تؤثر على رصيد الدورة الجديدة.'}
                       </div>
                     ) : (
@@ -3797,21 +3926,22 @@ export default function App() {
                         {displayedExpenses.slice(0, 5).map(exp => {
                           const cat = categories.find(c => c.id === exp.categoryId);
                           return (
-                            <div key={exp.id} className="p-2.5 rounded-xl border border-[#F3DCE2] bg-[#FFF8FA] flex items-center justify-between text-xs">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-bold text-[#4A353B]">{exp.description}</span>
-                                  <span className="text-[10px] bg-[#FADDE4] text-[#C96D84] px-1.5 py-0.2 rounded font-medium">
+                            <div key={exp.id} className="clay-card-cream p-3 flex items-center justify-between gap-2 text-xs">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-[#4A353B] break-words">{exp.description}</span>
+                                  <span className="text-[10px] bg-[#FADDE4] text-[#C96D84] px-2 py-0.5 rounded-lg font-bold">
                                     {cat?.name || 'عام'}
                                   </span>
                                 </div>
                                 <span className="text-[10px] text-[#8E757C] mt-0.5 block">{exp.date}</span>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-black text-[#4A353B]">{exp.amount} ج.م</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="font-black text-[#4A353B] tabular-nums">{exp.amount} ج.م</span>
                                 <button
+                                  type="button"
                                   onClick={() => handleDeleteExpense(exp.id)}
-                                  className="text-[#8E757C] hover:text-red-600 p-1"
+                                  className="text-[#8E757C] hover:text-red-600 p-1 rounded-lg"
                                   title="حذف"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -3826,24 +3956,24 @@ export default function App() {
 
                   {/* Extra Income Records (Preserved from legacy household finance) */}
                   {extraIncomeRecords.length > 0 && (
-                    <div className="bg-white p-4 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-2.5">
-                      <div className="flex items-center justify-between">
+                    <div className="clay-card p-4 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
                         <h3 className="font-extrabold text-xs text-[#4A353B]">سجل الدخل الإضافي ({extraIncomeRecords.length})</h3>
                         <span className="text-[10px] text-[#8E757C]">بيانات محفوظة من سجل البيت</span>
                       </div>
                       <div className="space-y-2">
                         {extraIncomeRecords.map(inc => (
-                          <div key={inc.id} className="p-2.5 rounded-xl border border-[#F3DCE2] bg-[#FADDE4]/35 flex items-center justify-between text-xs">
-                            <div className="flex-1">
-                              <span className="font-bold text-[#4A353B] block">{inc.description || inc.categoryId}</span>
+                          <div key={inc.id} className="clay-card-cream border border-[#A8B8A0]/45 p-3 flex items-center justify-between gap-2 text-xs">
+                            <div className="flex-1 min-w-0">
+                              <span className="font-bold text-[#4A353B] block truncate">{inc.description || inc.categoryId}</span>
                               <span className="text-[10px] text-[#8E757C]">{inc.date} · {inc.categoryId}</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-black text-[#C96D84]">+{inc.amount} ج.م</span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="font-black text-[#C96D84] tabular-nums">+{inc.amount} ج.م</span>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteExtraIncome(inc.id)}
-                                className="text-[#8E757C] hover:text-red-600 p-1"
+                                className="text-[#8E757C] hover:text-red-600 p-1 rounded-lg"
                                 title="حذف"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -3856,7 +3986,7 @@ export default function App() {
                   )}
 
                   {/* Saved Budget Plans (Consolidated into الميزانية) */}
-                  <div className="bg-white p-4 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-3">
+                  <div className="clay-card p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="font-extrabold text-xs text-[#4A353B]">الميزانيات المحفوظة ({savedBudgets.length})</h3>
@@ -3864,30 +3994,30 @@ export default function App() {
                       </div>
                     </div>
                     {savedBudgets.length === 0 ? (
-                      <div className="p-4 text-center text-xs text-[#8E757C] border border-dashed border-[#F3DCE2] rounded-xl">
+                      <div className="clay-inset p-4 text-center text-xs text-[#8E757C]">
                         لسه مفيش خطط ميزانية محفوظة. بعد تعديل النسب بالأعلى، اضغطي "حفظ خطة الميزانية" لتظهر هنا.
                       </div>
                     ) : (
                       <div className="space-y-2.5">
                         {savedBudgets.map(b => (
-                          <div key={b.id} className="p-3.5 rounded-2xl border border-[#F3DCE2] bg-[#FFF8FA] space-y-2">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <h4 className="font-bold text-sm text-[#4A353B]">{b.categoryTitle}</h4>
-                                <span className="text-xs font-extrabold text-[#C96D84]">{b.totalAmount} جنيه مصري</span>
+                          <div key={b.id} className="clay-card-cream p-3.5 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-sm text-[#4A353B] truncate">{b.categoryTitle}</h4>
+                                <span className="text-xs font-extrabold text-[#C96D84] tabular-nums">{b.totalAmount} جنيه مصري</span>
                               </div>
                               <button
                                 type="button"
                                 onClick={() => setSavedBudgets(prev => prev.filter(x => x.id !== b.id))}
-                                className="text-red-500 hover:text-red-700 p-1.5"
+                                className="text-red-500 hover:text-red-700 p-1.5 rounded-lg shrink-0"
                                 title="حذف الخطة"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
-                            <div className="text-xs space-y-1 pt-1 border-t border-[#F3DCE2]">
+                            <div className="text-xs space-y-1 pt-1.5 border-t border-[#F3DCE2]">
                               {b.slices.map((s, idx) => (
-                                <div key={idx} className="flex justify-between text-[#8E757C]">
+                                <div key={idx} className="flex justify-between text-[#8E757C] tabular-nums">
                                   <span>{s.name} ({s.percentage}%)</span>
                                   <span className="font-bold text-[#4A353B]">{Math.round(s.amount)} ج.م</span>
                                 </div>
@@ -3905,53 +4035,59 @@ export default function App() {
               {/* === TAB 3: تدبيرة اليوم (تحت الرئيسية) === */}
               {/* ======================================================== */}
               {activeTab === 'daily' && (
-                <div className="space-y-4">
+                <div className="space-y-4 overflow-x-hidden">
                   <div className="flex items-center justify-between gap-2">
                     <button
                       type="button"
                       onClick={() => setActiveTab('home')}
-                      className="inline-flex items-center gap-1 rounded-xl border border-[#F3DCE2] bg-white px-3 py-2 text-xs font-bold text-[#4A353B] min-h-[40px]"
+                      className="clay-btn-secondary clay-tactile inline-flex items-center gap-1 px-3 py-2 text-xs font-bold text-[#4A353B] min-h-[40px]"
                     >
                       <ChevronRight className="h-4 w-4" /> رجوع للرئيسية
                     </button>
-                    <span className="text-xs bg-[#FADDE4] text-[#C96D84] font-black px-2.5 py-1 rounded-full">كل جنيه ليه قيمة 💛</span>
+                    <span className="text-xs bg-[#D9AE72]/20 border border-[#D9AE72]/45 text-[#4A353B] font-black px-3 py-1 rounded-xl">كل جنيه ليه قيمة 💛</span>
                   </div>
 
-                  <div>
-                    <h2 className="text-lg font-extrabold text-[#4A353B]">تدبيرة اليوم 💡</h2>
-                    <p className="text-xs text-[#8E757C] mt-0.5">
-                      وفّر بذكاء، ودبّر بيتك، وخلي كل جنيه في مكانه مع حيل يومية مجربة.
-                    </p>
+                  <div className="clay-card-soft rounded-[28px] p-4 bg-gradient-to-br from-[#FFF1E8] via-[#FADDE4] to-[#F3DCE2] flex items-center gap-3">
+                    <span className="clay-icon-well w-12 h-12 rounded-2xl flex items-center justify-center shrink-0">
+                      <Home3DIcon className="w-9 h-9" />
+                    </span>
+                    <div className="min-w-0">
+                      <h2 className="text-base font-black text-[#4A353B]">تدبيرة اليوم 💡</h2>
+                      <p className="text-[11px] text-[#4A353B]/80 mt-0.5">
+                        وفّر بذكاء، ودبّر بيتك، وخلي كل جنيه في مكانه مع حيل يومية مجربة.
+                      </p>
+                    </div>
                   </div>
 
                   {/* Daily Signature Challenge */}
-                  <div className={`p-4 rounded-2xl border transition ${
+                  <div className={`p-4 transition ${
                     dailyCompleted
-                      ? 'bg-[#FADDE4]/65 border-[#D47E93]'
-                      : 'bg-[#FFFFFF] border-[#F3DCE2]'
+                      ? 'clay-card-soft border-[#D47E93]'
+                      : 'clay-card'
                   }`}>
-                    <div className="flex items-center justify-between">
-                      <span className={`text-xs font-black px-2.5 py-0.5 rounded-md ${
-                        dailyCompleted ? 'bg-[#C96D84] text-white' : 'bg-[#D47E93] text-white'
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-xs font-black px-2.5 py-0.5 rounded-lg ${
+                        dailyCompleted ? 'bg-[#A8B8A0]/30 text-[#4A353B] border border-[#A8B8A0]/50' : 'bg-[#D47E93] text-white'
                       }`}>
                         {dailyCompleted ? 'تم إنجاز التحدي! 🎉' : '🎯 تدبيرتك النهارده'}
                       </span>
-                      <span className="text-[11px] text-[#8E757C]">{todayDateKey}</span>
+                      <span className="text-[11px] text-[#8E757C] tabular-nums">{todayDateKey}</span>
                     </div>
 
                     <h3 className="font-extrabold text-sm text-[#4A353B] mt-2">{todayChallenge.title}</h3>
                     <p className="text-xs text-[#8E757C] mt-1 leading-relaxed">{todayChallenge.description}</p>
-                    <span className="inline-block mt-2 text-[11px] text-[#C96D84] bg-[#FADDE4] font-semibold px-2 py-0.5 rounded">
+                    <span className="inline-block mt-2 text-[11px] text-[#4A353B] bg-[#D9AE72]/20 border border-[#D9AE72]/45 font-bold px-2.5 py-0.5 rounded-lg">
                       ✨ {todayChallenge.impactTag}
                     </span>
 
-                    <div className="flex items-center justify-between mt-3 pt-2 border-t border-[#F3DCE2]">
+                    <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-[#F3DCE2] gap-2">
                       <button
+                        type="button"
                         onClick={toggleDailyCompletion}
-                        className={`text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                        className={`clay-tactile text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 ${
                           dailyCompleted
-                            ? 'bg-[#D47E93] text-white shadow-sm'
-                            : 'bg-white border border-[#F3DCE2] text-[#4A353B] hover:bg-[#FFF8FA]'
+                            ? 'clay-btn-primary'
+                            : 'clay-btn-secondary text-[#4A353B]'
                         }`}
                       >
                         <Check className="w-3.5 h-3.5" />
@@ -3959,8 +4095,9 @@ export default function App() {
                       </button>
 
                       <button
+                        type="button"
                         onClick={handleShareDailyChallenge}
-                        className="text-xs font-bold text-[#C96D84] bg-white border border-[#F3DCE2] hover:bg-[#FADDE4]/40 px-3 py-1.5 rounded-lg flex items-center gap-1 transition"
+                        className="clay-btn-secondary clay-tactile text-xs font-bold text-[#C96D84] px-3.5 py-2 rounded-xl flex items-center gap-1"
                       >
                         <Share2 className="w-3.5 h-3.5" />
                         <span>مشاركة الإنجاز</span>
@@ -3969,15 +4106,15 @@ export default function App() {
                   </div>
 
                   {/* Phase 4C: Achievement Counter & "أفكاري المحفوظة" Toggle Banner */}
-                  <div className="bg-[#FFFFFF] p-3 rounded-2xl border border-[#F3DCE2] shadow-sm flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-[#FADDE4] text-[#C96D84] font-black flex items-center justify-center text-sm shadow-inner shrink-0">
-                        🏆
+                  <div className="clay-card-cream p-3.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="clay-icon-well w-10 h-10 rounded-2xl flex items-center justify-center shrink-0">
+                        <SavingsGold3DIcon className="w-7 h-7" />
                       </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-extrabold text-xs text-[#4A353B]">إنجازات تدابير التوفير:</span>
-                          <span className="bg-[#D47E93] text-white text-[10px] font-black px-2 py-0.2 rounded-full">
+                          <span className="bg-[#D47E93] text-white text-[10px] font-black px-2 py-0.5 rounded-lg tabular-nums">
                             {calculateUniqueAchievementCount(triedTipIds)} حيل مُجربة
                           </span>
                         </div>
@@ -3993,10 +4130,10 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setDailyTipsViewMode(prev => prev === 'saved' ? 'all' : 'saved')}
-                      className={`text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1 border shrink-0 ${
+                      className={`clay-tactile text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 shrink-0 ${
                         dailyTipsViewMode === 'saved'
-                          ? 'bg-[#D47E93] text-white border-[#D47E93] shadow-xs'
-                          : 'bg-[#FADDE4]/60 text-[#C96D84] border-[#F3DCE2] hover:bg-[#FADDE4]'
+                          ? 'clay-btn-primary'
+                          : 'clay-btn-secondary text-[#C96D84]'
                       }`}
                       title="عرض الحيل التي حفظتها للرجوع إليها"
                     >
@@ -4013,14 +4150,14 @@ export default function App() {
                         value={dailySearch}
                         onChange={(e) => setDailySearch(e.target.value)}
                         placeholder="ابحث في أفكار التوفير والمنزل..."
-                        className="w-full text-xs bg-white border border-[#F3DCE2] text-[#4A353B] rounded-xl py-2 px-3 pl-8 focus:outline-none focus:border-[#D47E93]"
+                        className="clay-inset w-full text-xs text-[#4A353B] py-2.5 px-3 pl-9 focus:outline-none focus:border-[#D47E93]"
                       />
-                      <Search className="w-4 h-4 text-[#8E757C] absolute left-2.5 top-2.5" />
+                      <Search className="w-4 h-4 text-[#8E757C] absolute left-3 top-2.5" />
                     </div>
 
                     {/* Active Saved Mode Indicator */}
                     {dailyTipsViewMode === 'saved' && (
-                      <div className="bg-[#FADDE4]/50 border border-[#F3DCE2] rounded-xl px-3 py-1.5 flex items-center justify-between text-xs">
+                      <div className="clay-card-soft px-3 py-2 flex items-center justify-between text-xs">
                         <span className="font-bold text-[#C96D84] flex items-center gap-1">
                           <Bookmark className="w-3.5 h-3.5 fill-[#C96D84]" />
                           <span>عرض أفكاري المحفوظة ({filteredDailyIdeas.length})</span>
@@ -4035,16 +4172,17 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Phase 4C: 5 Exact Categories (الكل، تنظيف، توفير كهرباء، مطبخ وتغذية، حيل تسوق) */}
+                    {/* Phase 4C: 5 Exact Categories */}
                     <div className="flex gap-1.5 overflow-x-auto pb-1 text-xs">
                       {['الكل', 'تنظيف', 'توفير كهرباء', 'مطبخ وتغذية', 'حيل تسوق'].map(cat => (
                         <button
                           key={cat}
+                          type="button"
                           onClick={() => setSelectedDailyCategory(cat)}
-                          className={`px-3 py-1 rounded-xl whitespace-nowrap font-bold transition ${
+                          className={`clay-tactile px-3 py-1.5 rounded-xl whitespace-nowrap font-bold shrink-0 ${
                             selectedDailyCategory === cat
-                              ? 'bg-[#D47E93] text-white shadow-xs'
-                              : 'bg-white border border-[#F3DCE2] text-[#4A353B] hover:bg-[#FFF8FA]'
+                              ? 'clay-btn-primary'
+                              : 'clay-btn-secondary text-[#4A353B]'
                           }`}
                         >
                           {cat}
@@ -4056,9 +4194,9 @@ export default function App() {
                   {/* Curated Tips List */}
                   <div className="space-y-3">
                     {filteredDailyIdeas.length === 0 ? (
-                      <div className="bg-white p-6 rounded-2xl border border-dashed border-[#F3DCE2] text-center space-y-2">
-                        <div className="w-10 h-10 rounded-full bg-[#FADDE4] text-[#C96D84] mx-auto flex items-center justify-center font-bold text-lg">
-                          💡
+                      <div className="clay-card-cream p-6 text-center space-y-2">
+                        <div className="clay-icon-well w-12 h-12 rounded-2xl mx-auto flex items-center justify-center">
+                          <Home3DIcon className="w-8 h-8" />
                         </div>
                         <p className="text-xs font-bold text-[#4A353B]">
                           {dailyTipsViewMode === 'saved'
@@ -4072,7 +4210,7 @@ export default function App() {
                             setSelectedDailyCategory('الكل');
                             setDailySearch('');
                           }}
-                          className="text-xs font-bold text-[#C96D84] bg-[#FADDE4] hover:bg-[#E8A8B7]/50 px-3 py-1.5 rounded-xl transition"
+                          className="clay-btn-secondary clay-tactile text-xs font-bold text-[#C96D84] px-3.5 py-2 rounded-xl"
                         >
                           عرض كل الحيل 💡
                         </button>
@@ -4084,7 +4222,7 @@ export default function App() {
                         const isBrokenImg = brokenImages[idea.id];
 
                         return (
-                          <div key={idea.id} className="bg-white rounded-2xl border border-[#F3DCE2] shadow-sm overflow-hidden space-y-2.5">
+                          <div key={idea.id} className="clay-card overflow-hidden space-y-2.5">
                             {/* Visual Banner */}
                             <div className="relative h-28 w-full bg-[#FFF8FA] overflow-hidden">
                               {!isBrokenImg ? (
@@ -4113,15 +4251,15 @@ export default function App() {
                               <div className="flex items-start justify-between gap-2">
                                 <h4 className="font-bold text-sm text-[#4A353B] leading-snug">{idea.title}</h4>
                                 {isTried && (
-                                  <span className="bg-[#FADDE4] text-[#C96D84] text-[10px] font-black px-2 py-0.5 rounded-md shrink-0 flex items-center gap-1">
-                                    <Check className="w-3 h-3 text-[#C96D84]" />
+                                  <span className="bg-[#A8B8A0]/25 border border-[#A8B8A0]/45 text-[#4A353B] text-[10px] font-black px-2 py-0.5 rounded-lg shrink-0 flex items-center gap-1">
+                                    <Check className="w-3 h-3 text-[#4A353B]" />
                                     <span>مُجربة</span>
                                   </span>
                                 )}
                               </div>
                               <p className="text-xs text-[#8E757C] leading-relaxed">{idea.description}</p>
 
-                              <div className="bg-[#FFF8FA] border border-[#F3DCE2] p-2 rounded-xl text-[11px] text-[#4A353B] flex items-center gap-1.5">
+                              <div className="clay-inset p-2.5 text-[11px] text-[#4A353B] flex items-center gap-1.5">
                                 <span>💡</span>
                                 <span className="font-medium">{idea.practicalTip}</span>
                               </div>
@@ -4136,15 +4274,14 @@ export default function App() {
                               </div>
 
                               {/* Interactive Actions */}
-                              <div className="flex items-center justify-between pt-2 border-t border-[#F3DCE2] gap-1.5">
-                                {/* Phase 4C: Interactive "جربت الحيلة دي ووفرت" Button */}
+                              <div className="flex items-center justify-between pt-2 border-t border-[#F3DCE2] gap-1.5 flex-wrap">
                                 <button
                                   type="button"
                                   onClick={() => handleToggleTriedTip(idea.id)}
-                                  className={`text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 transition ${
+                                  className={`clay-tactile text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 ${
                                     isTried
-                                      ? 'bg-[#D47E93] text-white shadow-xs ring-1 ring-[#E8A8B7]'
-                                      : 'bg-[#FADDE4] hover:bg-[#E8A8B7]/50 text-[#C96D84] border border-[#F3DCE2]'
+                                      ? 'clay-btn-primary'
+                                      : 'clay-btn-secondary text-[#C96D84]'
                                   }`}
                                   title="سجل أنك طبقت هذه الحيلة في بيتك"
                                 >
@@ -4152,27 +4289,25 @@ export default function App() {
                                   <span>{isTried ? 'جربتها بالفعل ✓' : 'جربت الحيلة دي ووفرت'}</span>
                                 </button>
 
-                                <div className="flex items-center gap-1">
-                                  {/* Bookmark Control */}
+                                <div className="flex items-center gap-1.5">
                                   <button
                                     type="button"
                                     onClick={() => toggleSaveTip(idea.id)}
-                                    className={`text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 transition border ${
+                                    className={`clay-tactile text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 ${
                                       isSaved
-                                        ? 'bg-[#FADDE4] text-[#C96D84] border-[#E8A8B7]'
-                                        : 'bg-[#FFF8FA] hover:bg-[#FADDE4]/40 text-[#8E757C] border-[#F3DCE2]'
+                                        ? 'clay-btn-gold'
+                                        : 'clay-btn-secondary text-[#8E757C]'
                                     }`}
                                     title="حفظ في أفكاري المحفوظة"
                                   >
-                                    <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-[#C96D84] text-[#C96D84]' : ''}`} />
+                                    <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-[#4A353B] text-[#4A353B]' : ''}`} />
                                     <span>{isSaved ? 'محفوظة' : 'حفظ'}</span>
                                   </button>
 
-                                  {/* Share Button */}
                                   <button
                                     type="button"
                                     onClick={() => handleShareTip(idea)}
-                                    className="text-xs font-bold text-[#C96D84] hover:bg-[#FADDE4]/40 px-2.5 py-1.5 rounded-xl border border-[#F3DCE2] flex items-center gap-1 transition"
+                                    className="clay-btn-secondary clay-tactile text-xs font-bold text-[#C96D84] px-2.5 py-1.5 rounded-xl flex items-center gap-1"
                                     title="مشاركة النصيحة"
                                   >
                                     <Share2 className="w-3.5 h-3.5" />
@@ -4192,12 +4327,23 @@ export default function App() {
               {/* === TAB 4: التسوق وقائمة النواقص === */}
               {/* ======================================================== */}
               {activeTab === 'saved' && (
-                <div className="space-y-4">
-                  <div>
-                    <h2 className="text-lg font-extrabold text-[#4A353B]">التسوق ومخزون البيت 🛒</h2>
-                    <p className="text-xs text-[#8E757C] mt-0.5">
-                      تابعي مخزون البيت، سجّلي نواقص السوق، شاركيها على واتساب، أو اطلبي أونلاين بسهولة.
-                    </p>
+                <div className="space-y-4 overflow-x-hidden">
+                  {/* Soft-3D Shopping Hero Banner Featuring Custom 3D Powder-Pink Shopping Basket */}
+                  <div className="clay-card-soft rounded-[28px] p-4 bg-gradient-to-br from-[#FFF1E8] via-[#FADDE4] to-[#F3DCE2] flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="clay-icon-well w-13 h-13 rounded-2xl flex items-center justify-center shrink-0">
+                        <Shopping3DIcon className="w-10 h-10" />
+                      </span>
+                      <div className="min-w-0">
+                        <h2 className="text-base font-black text-[#4A353B]">التسوق ومخزون البيت 🛒</h2>
+                        <p className="text-[11px] text-[#4A353B]/80 mt-0.5 leading-5">
+                          تابعي مخزون البيت، سجّلي نواقص السوق، شاركيها على واتساب، أو اطلبي أونلاين بسهولة.
+                        </p>
+                      </div>
+                    </div>
+                    <span className="shrink-0 rounded-xl bg-[#A8B8A0]/25 border border-[#A8B8A0]/45 px-2.5 py-1 text-[10px] font-extrabold text-[#4A353B] tabular-nums">
+                      {shoppingItems.filter(i => !i.isChecked).length} نواقص
+                    </span>
                   </div>
 
                   {/* 1. قائمة احتياجات ومخزون البيت (Household Pantry & Needs) */}
@@ -4206,7 +4352,7 @@ export default function App() {
                   {/* 2. قائمة المشتريات والنواقص (Shopping List / النواقص) */}
                   <div className="space-y-3">
                     {/* Financial Grand Total Banner & Live Market Sync */}
-                    <div className="bg-white p-3.5 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-2.5">
+                    <div className="clay-card p-4 space-y-2.5">
                       <ShoppingTotalsSummary
                         totals={shoppingTotals}
                         items={shoppingItems}
@@ -4218,7 +4364,7 @@ export default function App() {
                           type="button"
                           onClick={() => void handleRefreshMarketPrices()}
                           disabled={isRefreshingMarketPrices}
-                          className="min-h-[34px] bg-[#FADDE4] hover:bg-[#E8A8B7]/60 text-[#C96D84] border border-[#F3DCE2] px-3 py-1.5 rounded-xl text-[11px] font-extrabold inline-flex items-center gap-1.5 transition disabled:opacity-60"
+                          className="clay-btn-secondary clay-tactile min-h-[36px] text-[#C96D84] px-3 py-1.5 rounded-xl text-[11px] font-extrabold inline-flex items-center gap-1.5 disabled:opacity-60"
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingMarketPrices ? 'animate-spin' : ''}`} />
                           <span>
@@ -4236,8 +4382,9 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-1 text-xs">
+                    <div className="flex items-center justify-between gap-2 pt-1 text-xs flex-wrap">
                       <button
+                        type="button"
                         onClick={() => {
                           setNewItemName('');
                           setNewItemQty('1');
@@ -4245,7 +4392,7 @@ export default function App() {
                           setNewItemUnitPrice('');
                           setIsAddItemModalOpen(true);
                         }}
-                        className="min-h-[40px] bg-[#D47E93] hover:bg-[#C96D84] text-white px-3.5 py-2 rounded-xl font-bold flex items-center gap-1 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
+                        className="clay-btn-primary min-h-[42px] px-4 py-2 font-extrabold flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>إضافة طلب جديد</span>
@@ -4254,19 +4401,21 @@ export default function App() {
                       <div className="flex gap-1.5">
                         {shoppingItems.some(i => i.isChecked) && (
                           <button
+                            type="button"
                             onClick={() => {
                               setShoppingItems(prev => prev.filter(i => !i.isChecked));
                               showToast('تم مسح الأصناف المشتراة');
                             }}
-                            className="bg-[#FADDE4] hover:bg-[#E8A8B7]/50 text-[#C96D84] px-2.5 py-1 rounded-lg text-xs font-semibold transition"
+                            className="clay-btn-secondary clay-tactile text-[#C96D84] px-3 py-1.5 rounded-xl text-xs font-bold"
                           >
                             مسح المكتمل
                           </button>
                         )}
                         {shoppingItems.length > 0 && (
                           <button
+                            type="button"
                             onClick={() => setIsClearShoppingConfirmOpen(true)}
-                            className="bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
+                            className="clay-tactile bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 px-3 py-1.5 rounded-xl text-xs font-bold"
                           >
                             إفراغ القائمة
                           </button>
@@ -4276,9 +4425,9 @@ export default function App() {
 
                     {/* Empty State or Shopping Items List */}
                     {shoppingItems.length === 0 ? (
-                      <div className="bg-white p-8 rounded-3xl text-center border border-dashed border-[#F3DCE2] space-y-3">
-                        <div className="w-14 h-14 bg-[#FADDE4] text-[#C96D84] rounded-full mx-auto flex items-center justify-center shadow-inner">
-                          <ShoppingCart className="w-7 h-7" />
+                      <div className="clay-card-cream p-8 text-center space-y-3">
+                        <div className="clay-icon-well w-16 h-16 rounded-2xl mx-auto flex items-center justify-center">
+                          <Shopping3DIcon className="w-11 h-11" />
                         </div>
                         <h4 className="text-base font-extrabold text-[#4A353B]">
                           لا توجد نواقص حاليًا.. دولاب خزينك تمام! 🧺
@@ -4288,7 +4437,7 @@ export default function App() {
                         </p>
                       </div>
                     ) : (
-                      <div className="space-y-2">
+                      <div className="space-y-2.5">
                         {shoppingItems.map(item => {
                           const lineTotal = calculateLineTotal(item.quantity, item.unitPrice);
                           const itemKey = normalizeMarketItemKey(item.name, item.unit);
@@ -4299,10 +4448,10 @@ export default function App() {
                           return (
                             <div
                               key={item.id}
-                              className={`p-3 rounded-2xl border transition ${
+                              className={`p-3.5 transition ${
                                 item.isChecked
-                                  ? 'bg-[#FFF8FA] border-[#F3DCE2] opacity-70'
-                                  : 'bg-white border-[#F3DCE2] shadow-xs'
+                                  ? 'clay-inset opacity-75'
+                                  : 'clay-card'
                               }`}
                             >
                               <div className="flex items-start justify-between gap-2">
@@ -4313,18 +4462,20 @@ export default function App() {
                                   }}
                                   className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0"
                                 >
-                                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border shrink-0 transition ${
-                                    item.isChecked ? 'bg-[#D47E93] border-[#D47E93] text-white' : 'border-[#E8A8B7] bg-white'
+                                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center border shrink-0 transition ${
+                                    item.isChecked
+                                      ? 'bg-[#A8B8A0] border-[#A8B8A0] text-white'
+                                      : 'border-[#E8A8B7] bg-[#FFF8FA] shadow-2xs'
                                   }`}>
                                     {item.isChecked && <Check className="w-3.5 h-3.5" />}
                                   </div>
                                   <div className="min-w-0">
-                                    <span className={`text-xs font-bold block truncate ${item.isChecked ? 'line-through text-[#8E757C]' : 'text-[#4A353B]'}`}>
+                                    <span className={`text-xs font-extrabold block truncate ${item.isChecked ? 'line-through text-[#8E757C]' : 'text-[#4A353B]'}`}>
                                       {item.name}
                                     </span>
                                     <div className="flex flex-wrap items-center gap-1.5 mt-1">
                                       {isFetchingThisPrice ? (
-                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#C96D84] bg-[#FADDE4] px-2 py-0.5 rounded-full border border-[#F3DCE2]">
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#C96D84] bg-[#FADDE4] px-2 py-0.5 rounded-xl border border-[#F3DCE2]">
                                           <Loader2 className="w-2.5 h-2.5 animate-spin" />
                                           <span>جاري جلب السعر الحقيقي...</span>
                                         </span>
@@ -4340,7 +4491,7 @@ export default function App() {
                                               currentPrice: item.unitPrice !== null ? item.unitPrice.toString() : ''
                                             });
                                           }}
-                                          className="text-[10px] text-[#C96D84] bg-[#FADDE4]/80 hover:bg-[#FADDE4] px-2 py-0.5 rounded-full border border-[#F3DCE2] font-bold flex items-center gap-1 transition"
+                                          className="clay-btn-secondary clay-tactile text-[10px] text-[#C96D84] px-2.5 py-0.5 rounded-xl font-bold flex items-center gap-1 tabular-nums"
                                           title="اضغط لتعديل السعر أو التحقق من السوق"
                                         >
                                           <span>{item.unitPrice} ج.م/{item.unit}</span>
@@ -4361,7 +4512,7 @@ export default function App() {
                                               currentPrice: ''
                                             });
                                           }}
-                                          className="text-[10px] text-[#C96D84] font-bold bg-[#FADDE4] hover:bg-[#E8A8B7]/60 px-2.5 py-0.5 rounded-full border border-[#F3DCE2] flex items-center gap-1 transition"
+                                          className="clay-btn-secondary clay-tactile text-[10px] text-[#C96D84] font-bold px-2.5 py-0.5 rounded-xl flex items-center gap-1"
                                         >
                                           <span>أدخلي السعر +</span>
                                         </button>
@@ -4371,21 +4522,23 @@ export default function App() {
                                 </div>
 
                                 {/* Quantity Stepper & Line Total */}
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <div className="flex items-center bg-[#FFF8FA] border border-[#F3DCE2] rounded-lg p-0.5">
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <div className="clay-inset flex items-center p-0.5 rounded-xl">
                                     <button
+                                      type="button"
                                       onClick={() => updateItemQty(item.id, -0.5)}
-                                      className="w-5 h-5 rounded text-[#C96D84] hover:bg-[#FADDE4] font-bold flex items-center justify-center text-xs"
+                                      className="clay-tactile w-7 h-7 rounded-lg text-[#C96D84] hover:bg-[#FADDE4] font-extrabold flex items-center justify-center text-xs"
                                       title="إنقاص الكمية"
                                     >
                                       -
                                     </button>
-                                    <span className="px-1.5 text-xs font-bold text-[#4A353B]">
+                                    <span className="px-1.5 text-xs font-extrabold text-[#4A353B] tabular-nums whitespace-nowrap">
                                       {item.quantity} {item.unit}
                                     </span>
                                     <button
+                                      type="button"
                                       onClick={() => updateItemQty(item.id, 0.5)}
-                                      className="w-5 h-5 rounded text-[#C96D84] hover:bg-[#FADDE4] font-bold flex items-center justify-center text-xs"
+                                      className="clay-tactile w-7 h-7 rounded-lg text-[#C96D84] hover:bg-[#FADDE4] font-extrabold flex items-center justify-center text-xs"
                                       title="زيادة الكمية"
                                     >
                                       +
@@ -4393,13 +4546,13 @@ export default function App() {
                                   </div>
 
                                   {/* Line Total or Clean Powder Pink Prompt Pill */}
-                                  <div className="text-left min-w-[68px]">
+                                  <div className="text-left min-w-[60px]">
                                     {lineTotal !== null ? (
-                                      <span className="font-black text-xs text-[#C96D84] block">
+                                      <span className="font-black text-xs text-[#C96D84] block tabular-nums">
                                         {Math.round(lineTotal)} ج.م
                                       </span>
                                     ) : isFetchingThisPrice ? (
-                                      <span className="inline-flex items-center justify-center text-[10px] font-bold text-[#C96D84] bg-[#FADDE4] px-2 py-0.5 rounded-full">
+                                      <span className="inline-flex items-center justify-center text-[10px] font-bold text-[#C96D84] bg-[#FADDE4] px-2 py-0.5 rounded-xl">
                                         ...
                                       </span>
                                     ) : (
@@ -4413,7 +4566,7 @@ export default function App() {
                                             currentPrice: ''
                                           })
                                         }
-                                        className="text-[10px] font-bold text-[#C96D84] bg-[#FADDE4] hover:bg-[#E8A8B7]/60 px-2 py-0.5 rounded-full border border-[#F3DCE2] whitespace-nowrap transition"
+                                        className="clay-btn-secondary clay-tactile text-[10px] font-bold text-[#C96D84] px-2 py-0.5 rounded-xl whitespace-nowrap"
                                       >
                                         أدخلي السعر +
                                       </button>
@@ -4421,8 +4574,9 @@ export default function App() {
                                   </div>
 
                                   <button
+                                    type="button"
                                     onClick={() => setShoppingItems(prev => prev.filter(i => i.id !== item.id))}
-                                    className="text-[#8E757C] hover:text-red-600 p-1"
+                                    className="text-[#8E757C] hover:text-red-600 p-1 rounded-lg"
                                     title="حذف"
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -4439,7 +4593,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={handleShareShoppingWhatsApp}
-                      className="w-full min-h-[46px] bg-[#D47E93] hover:bg-[#C96D84] text-white font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
+                      className="clay-btn-primary w-full min-h-[46px] font-extrabold py-3 px-4 text-xs flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
                       title="مشاركة الأصناف غير المشتراة عبر تطبيق واتساب"
                     >
                       <Share2 className="w-4 h-4" />
@@ -4447,13 +4601,15 @@ export default function App() {
                     </button>
 
                     {/* 4. روابط الطلب أونلاين (متاجر التوصيل) */}
-                    <div className="bg-[#FFFFFF] p-3.5 rounded-2xl border border-[#F3DCE2] shadow-sm space-y-2.5">
+                    <div className="clay-card p-4 space-y-2.5">
                       <div className="flex items-center justify-between gap-2 border-b border-[#F3DCE2] pb-2">
-                        <div className="flex items-center gap-1.5">
-                          <ShoppingCart className="w-4 h-4 text-[#C96D84] shrink-0" />
-                          <h3 className="text-xs font-extrabold text-[#4A353B]">روابط الطلب أونلاين (متاجر التوصيل)</h3>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="clay-icon-well w-9 h-9 rounded-xl flex items-center justify-center shrink-0">
+                            <Shopping3DIcon className="w-6 h-6" />
+                          </span>
+                          <h3 className="text-xs font-extrabold text-[#4A353B] truncate">روابط الطلب أونلاين (متاجر التوصيل)</h3>
                         </div>
-                        <span className="text-[10px] font-bold text-[#8E757C]">
+                        <span className="text-[10px] font-extrabold text-[#4A353B] bg-[#D9AE72]/20 border border-[#D9AE72]/45 px-2 py-0.5 rounded-lg shrink-0 tabular-nums">
                           {shoppingItems.some(i => !i.isChecked)
                             ? `${shoppingItems.filter(i => !i.isChecked).length} نواقص`
                             : 'متاجر مصر'}
@@ -4469,7 +4625,7 @@ export default function App() {
                               href={deal.affiliateTrackingUrl || deal.officialUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="bg-[#FFF8FA] hover:border-[#D47E93] p-2.5 rounded-xl border border-[#F3DCE2] shadow-xs flex flex-col justify-between gap-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
+                              className="clay-card-cream clay-tactile hover:border-[#D47E93] p-3 flex flex-col justify-between gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D47E93]"
                             >
                               <div className="flex items-center justify-between gap-1">
                                 <span className="font-extrabold text-[11px] text-[#4A353B] truncate">{deal.partnerName}</span>
@@ -4572,23 +4728,7 @@ export default function App() {
               </div>
             )}
 
-            <nav className="tadbeera-bottom-nav bg-[#FFF8FA] border-t border-[#F3DCE2] pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shrink-0 shadow-[0_-5px_20px_rgba(74,53,59,0.06)]" aria-label="التنقل الرئيسي">
-              <div className="w-full max-w-2xl mx-auto px-1.5 grid grid-cols-5">
-                {([
-                  { id: 'home', label: 'الرئيسية', Icon: Home },
-                  { id: 'food', label: 'المطبخ', Icon: Utensils },
-                  { id: 'household', label: 'البيت', Icon: Users },
-                  { id: 'saved', label: 'التسوق', Icon: ShoppingCart },
-                  { id: 'budget', label: 'الميزانية', Icon: Wallet }
-                ] as const).map(({ id, label, Icon }) => (
-                  <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id || (id === 'home' && activeTab === 'daily') ? 'page' : undefined}
-                    className={activeTab === id || (id === 'home' && activeTab === 'daily') ? "flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[#C96D84] bg-[#FADDE4] font-extrabold" : "flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[#8E757C]"}>
-                    <Icon className="w-5 h-5" strokeWidth={activeTab === id || (id === 'home' && activeTab === 'daily') ? 2.5 : 1.9} />
-                    <span className="text-[10px] leading-4">{label}</span>
-                  </button>
-                ))}
-              </div>
-            </nav>
+            <BottomNavigation activeTab={activeTab} onSelectTab={setActiveTab} />
 
       </main>
 
@@ -5900,8 +6040,8 @@ export default function App() {
           <div className="bg-[#FFFFFF] w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-[#F3DCE2] space-y-4">
             <div className="flex items-center justify-between border-b border-[#F3DCE2] pb-2.5">
               <div className="flex items-center gap-2">
-                <span className="w-8 h-8 rounded-full bg-[#FADDE4] text-[#C96D84] flex items-center justify-center">
-                  <Users className="w-4 h-4" />
+                <span className="clay-icon-well w-9 h-9 rounded-xl flex items-center justify-center shrink-0">
+                  <Household3DIcon className="w-6 h-6" />
                 </span>
                 <div>
                   <h3 id="family-size-modal-title" className="font-extrabold text-sm text-[#4A353B]">
