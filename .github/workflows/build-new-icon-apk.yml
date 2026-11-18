@@ -107,6 +107,8 @@ jobs:
           npm test
 
       - name: Build web app
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: npm run build
 
       - name: Sync Capacitor Android

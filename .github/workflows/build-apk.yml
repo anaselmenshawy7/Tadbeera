@@ -62,6 +62,8 @@ jobs:
         run: npm test
 
       - name: Build Web Assets
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: npm run build
 
       - name: Verify corrected recipe photos are bundled

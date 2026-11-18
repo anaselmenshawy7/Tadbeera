@@ -31,6 +31,8 @@ jobs:
       - name: Run automated tests
         run: npm test
       - name: Build web bundle
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: npm run build
       - name: Upload OTA bundle to Capgo Production
         if: ${{ env.CAPGO_API_KEY != '' }}
