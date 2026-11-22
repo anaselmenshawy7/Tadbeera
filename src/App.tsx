@@ -137,6 +137,7 @@ import {
   BannerAdPluginEvents,
   BannerAdPosition,
   BannerAdSize,
+  InterstitialAdPluginEvents,
 } from '@capacitor-community/admob';
 import { ADMOB_CONFIG, ADMOB_TEST_MODE } from './config/admobConfig';
 import {
@@ -774,6 +775,7 @@ export default function App() {
   const [isInterstitialEnabled, setIsInterstitialEnabled] = useState<boolean>(false); // Strictly disabled by default
   const [sessionInterstitialCount, setSessionInterstitialCount] = useState<number>(0);
   const [lastInterstitialTime, setLastInterstitialTime] = useState<number>(0);
+  const [isInterstitialLoading, setIsInterstitialLoading] = useState<boolean>(false);
   const [isInterstitialActive, setIsInterstitialActive] = useState<boolean>(false);
   const [interstitialCountdown, setInterstitialCountdown] = useState<number>(5);
   const [isAdControlsOpen, setIsAdControlsOpen] = useState<boolean>(false);
@@ -1092,33 +1094,74 @@ export default function App() {
     showToast(`تمت إضافة ${newItems.length} صنف من خطة الأسبوع إلى قائمة المشتريات بنجاح 🛒`);
   };
 
-  // Trigger Interstitial Ad with strict Google AdMob policy validation
-  const triggerTestInterstitial = () => {
-    // 1. Policy check: must be explicitly enabled
+  // Show a real AdMob interstitial on Android; retain simulation only for web preview.
+  const triggerTestInterstitial = async () => {
     if (!isInterstitialEnabled) {
-      showToast('الإعلانات البينية معطلة حالياً لحماية تجربة المستخدم (سياسة أد موب) 🛡️');
+      showToast('الإعلانات البينية معطلة حالياً لحماية تجربة المستخدم 🛡️');
       return;
     }
-    // 2. Frequency capping: max 2 per session
+    if (isInterstitialLoading) return;
     if (sessionInterstitialCount >= 2) {
       showToast('تم الوصول للحد الأقصى للإعلانات البينية في هذه الجلسة (2/2) ⚠️');
       return;
     }
-    // 3. Cooldown check: 120 seconds between impressions
+
+    const cooldownMs = 15 * 60 * 1000;
     const now = Date.now();
-    if (now - lastInterstitialTime < 120000) {
-      const remainingSec = Math.ceil((120000 - (now - lastInterstitialTime)) / 1000);
-      showToast(`فترة الانتظار نشطة: متبقي ${remainingSec} ثانية قبل الإعلان التالي ⏱️`);
+    if (lastInterstitialTime > 0 && now - lastInterstitialTime < cooldownMs) {
+      const remainingSec = Math.ceil((cooldownMs - (now - lastInterstitialTime)) / 1000);
+      showToast(`فترة الانتظار نشطة: متبقي ${Math.ceil(remainingSec / 60)} دقيقة قبل الإعلان التالي ⏱️`);
       return;
     }
-    // 4. Task interruption guard: never interrupt active budgeting or editing
     if (isAddItemModalOpen || editingPriceItem || isAddExpenseModalOpen || isAddCategoryModalOpen || selectedRecipeModal) {
-      showToast('تم حجب الإعلان: لا يمكن إظهار إعلانات أثناء أداء مهمة نشطة 🚫');
+      showToast('تم حجب الإعلان: لا يمكن إظهاره أثناء أداء مهمة نشطة 🚫');
       return;
     }
 
-    setIsInterstitialActive(true);
-    setInterstitialCountdown(5);
+    if (!isNativeApp) {
+      if (IS_DEV) {
+        setIsInterstitialActive(true);
+        setInterstitialCountdown(5);
+      }
+      return;
+    }
+
+    setIsInterstitialLoading(true);
+    let completed = false;
+    let dismissedHandle: { remove: () => Promise<void> } | null = null;
+    let failedHandle: { remove: () => Promise<void> } | null = null;
+    const finish = (wasDismissed: boolean) => {
+      if (completed) return;
+      completed = true;
+      if (wasDismissed) {
+        setSessionInterstitialCount(prev => prev + 1);
+        setLastInterstitialTime(Date.now());
+        showToast('تم إغلاق الإعلان واستئناف التطبيق ✓');
+      } else {
+        showToast('تعذر تحميل أو عرض الإعلان البيني. يمكنك المتابعة دون إعلان.');
+      }
+      void dismissedHandle?.remove().catch(() => undefined);
+      void failedHandle?.remove().catch(() => undefined);
+      setIsInterstitialLoading(false);
+    };
+
+    try {
+      const consent = await initializeAdMobWithConsent();
+      if (!consent.canRequestAds) {
+        finish(false);
+        return;
+      }
+      dismissedHandle = await AdMob.addListener(InterstitialAdPluginEvents.Dismissed, () => finish(true));
+      failedHandle = await AdMob.addListener(InterstitialAdPluginEvents.FailedToShow, () => finish(false));
+      await AdMob.prepareInterstitial({
+        adId: ADMOB_CONFIG.interstitialAdUnitId,
+        isTesting: false,
+      });
+      await AdMob.showInterstitial();
+    } catch (error) {
+      console.warn('AdMob interstitial failed:', error);
+      finish(false);
+    }
   };
 
   const handleDismissInterstitial = () => {
@@ -5702,9 +5745,10 @@ export default function App() {
 
                 <button
                   onClick={triggerTestInterstitial}
-                  className="bg-[#D47E93] hover:bg-[#C96D84] text-white text-xs font-bold px-3 py-1.5 rounded-xl transition shadow-sm"
+                  disabled={isInterstitialLoading}
+                  className="bg-[#D47E93] hover:bg-[#C96D84] disabled:opacity-60 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition shadow-sm"
                 >
-                  اختبار العرض الآن 🎬
+                  {isInterstitialLoading ? 'جارٍ تجهيز الإعلان…' : 'اختبار العرض الآن 🎬'}
                 </button>
               </div>
             </div>
