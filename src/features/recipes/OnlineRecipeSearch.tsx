@@ -829,12 +829,11 @@ export async function resolveOnlineOrOfflineRecipe(
     );
   }
 
-  // Tests may inject an SDK adapter explicitly. Production always routes
-  // Gemini requests through the server-side API; no client key is bundled.
-  if (options.clientSdkDeps) {
+  // Generate directly with the Gemini SDK, as in the original app.
+  {
     let recipe: OnlineRecipe;
     try {
-      const aiRecipe = await generateRecipeWithGeminiSdk(query, options.clientSdkDeps);
+      const aiRecipe = await generateRecipeWithGeminiSdk(query, options.clientSdkDeps || {});
       recipe = aiRecipeToOnlineRecipe(aiRecipe);
     } catch (err) {
       if (err instanceof GeminiRecipeSdkError) {
@@ -854,13 +853,7 @@ export async function resolveOnlineOrOfflineRecipe(
     return { recipes: [recipe], mode: 'ai' };
   }
 
-  const recipe = await generateRecipeViaApi(query, {
-    fetchFn: options.fetchFn,
-    apiBaseUrl: options.apiBaseUrl,
-    timeoutMs: options.timeoutMs,
-  });
-  saveGeneratedRecipeToLruCache(query, recipe, storage);
-  return { recipes: [recipe], mode: 'ai' };
+
 }
 
 function ServingsStepperControl({
@@ -981,34 +974,6 @@ export function OnlineRecipeSearch({
       /* storage may be full */
     }
   }, [saved]);
-
-  // Keep the free Render instance warm while the online recipe screen is in use.
-  // The health check never sends the Gemini key or recipe data.
-  useEffect(() => {
-    const baseUrl = getApiBaseUrl().replace(/\/$/, '');
-    if (!baseUrl) return;
-
-    let disposed = false;
-    const warmService = () => {
-      if (disposed || document.visibilityState === 'hidden') return;
-      void fetch(`${baseUrl}/api/health`, {
-        method: 'GET',
-        cache: 'no-store',
-      }).catch(() => {
-        // A failed warm-up must never interrupt normal recipe search.
-      });
-    };
-
-    warmService();
-    const intervalId = window.setInterval(warmService, 10 * 60 * 1000);
-    document.addEventListener('visibilitychange', warmService);
-
-    return () => {
-      disposed = true;
-      window.clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', warmService);
-    };
-  }, []);
 
   const handleServingsChange = (nextServings: number) => {
     const clamped = clampRecipeServings(nextServings);
