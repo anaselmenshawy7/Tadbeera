@@ -40,10 +40,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- AdMob Phase 2 (Test ID configuration) -->
+        <!-- Production AdMob application ID -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"/>
+            android:value="ca-app-pub-5850155159288546~1189923507"/>
 
         <receiver
             android:name=".MealReminderReceiver"

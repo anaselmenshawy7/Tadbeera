@@ -81,8 +81,7 @@ import {
 } from './data/calculationUtils';
 import {
   getRewardedAdService,
-  getWebSimulationAdapter,
-  OFFICIAL_TEST_REWARDED_AD_UNIT
+  getWebSimulationAdapter
 } from './services/rewardedAdService';
 import {
   ALARM_DISMISS_ACTION_ID,
@@ -140,6 +139,10 @@ import {
   BannerAdSize,
 } from '@capacitor-community/admob';
 import { ADMOB_CONFIG, ADMOB_TEST_MODE } from './config/admobConfig';
+import {
+  initializeAdMobWithConsent,
+  showAdMobPrivacyOptions,
+} from './services/admobConsentService';
 // Online recipe discovery is intentionally mounted as its own focused kitchen sub-screen.
 // The dedicated online search always attempts remote recipe providers before local fallbacks.
 // Heavy feature screens are loaded on demand so the first app screen stays lighter.
@@ -766,6 +769,7 @@ export default function App() {
   // AdMob State & Policy Compliance Controls (Google Mobile Ads)
   type AdStatus = 'loaded' | 'loading' | 'failed' | 'disabled';
   const [adStatus, setAdStatus] = useState<AdStatus>('disabled');
+  const [adPrivacyOptionsRequired, setAdPrivacyOptionsRequired] = useState(false);
   const [nativeBannerHeight, setNativeBannerHeight] = useState<number>(60);
   const [isInterstitialEnabled, setIsInterstitialEnabled] = useState<boolean>(false); // Strictly disabled by default
   const [sessionInterstitialCount, setSessionInterstitialCount] = useState<number>(0);
@@ -906,7 +910,7 @@ export default function App() {
     };
   }, [isNativeApp]);
 
-  // AdMob Bottom Adaptive Banner Integration on Native Android
+  // AdMob: collect UMP consent before initializing the SDK or requesting any ad.
   useEffect(() => {
     if (!isNativeApp) return;
     let mounted = true;
@@ -915,6 +919,13 @@ export default function App() {
     const initBanner = async () => {
       try {
         setAdStatus('loading');
+        const consent = await initializeAdMobWithConsent();
+        if (!mounted) return;
+        setAdPrivacyOptionsRequired(consent.privacyOptionsRequired);
+        if (!consent.canRequestAds) {
+          setAdStatus('disabled');
+          return;
+        }
 
         const loadedHandle = await AdMob.addListener(BannerAdPluginEvents.Loaded, () => {
           if (!mounted) return;
@@ -925,15 +936,13 @@ export default function App() {
           setAdStatus('loaded');
         });
         listenerHandles.push(loadedHandle);
-
-        const failedHandle = await AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (error) => {
+        const failedHandle = await AdMob.addListener(BannerAdPluginEvents.FailedToLoad, error => {
           if (!mounted) return;
           console.warn('AdMob banner FailedToLoad:', error);
           setAdStatus('failed');
         });
         listenerHandles.push(failedHandle);
-
-        const sizeHandle = await AdMob.addListener(BannerAdPluginEvents.SizeChanged, (size) => {
+        const sizeHandle = await AdMob.addListener(BannerAdPluginEvents.SizeChanged, size => {
           if (!mounted) return;
           if (typeof size?.height === 'number' && size.height > 0) {
             setNativeBannerHeight(Math.ceil(size.height));
@@ -942,38 +951,24 @@ export default function App() {
         listenerHandles.push(sizeHandle);
 
         if (!mounted) return;
-
-        await AdMob.initialize({
-          initializeForTesting: ADMOB_TEST_MODE,
-          testingDevices: ['EMULATOR'],
-        });
-        if (!mounted) return;
-
-        const options: BannerAdOptions = {
+        await AdMob.showBanner({
           adId: ADMOB_CONFIG.bannerAdUnitId,
           adSize: BannerAdSize.ADAPTIVE_BANNER,
           position: BannerAdPosition.BOTTOM_CENTER,
-          margin: 72, // Clears the ~69px bottom navigation bar cleanly without overlap
-          isTesting: ADMOB_TEST_MODE,
-        };
-        await AdMob.showBanner(options);
+          margin: 72,
+          isTesting: false,
+        });
       } catch (err) {
-        console.warn('AdMob banner initialization error:', err);
-        if (mounted) {
-          setAdStatus('failed');
-        }
+        console.warn('AdMob consent/banner initialization error:', err);
+        if (mounted) setAdStatus('failed');
       }
     };
 
     void initBanner();
     return () => {
       mounted = false;
-      listenerHandles.forEach(handle => {
-        void handle.remove().catch(() => {});
-      });
-      if (isNativeApp) {
-        void AdMob.hideBanner().catch(() => {});
-      }
+      listenerHandles.forEach(handle => { void handle.remove().catch(() => {}); });
+      void AdMob.hideBanner().catch(() => {});
     };
   }, [isNativeApp]);
 
@@ -988,7 +983,6 @@ export default function App() {
       // Completed simulation!
       const simAdapter = getWebSimulationAdapter();
       simAdapter?.completeSimulation();
-      grantWeeklyPlanReward();
     }
     return () => clearTimeout(timer);
   }, [isSimulatingPlayback, playbackCountdown]);
@@ -3146,7 +3140,7 @@ export default function App() {
                           <span>شاهد إعلاناً قصيراً لفتح جدول وجبات الأسبوع</span>
                         </button>
                         <div className="flex items-center justify-between text-[10px] text-[#8E757C] pt-0.5">
-                          <span>• محاكاة إعلان تجريبي (AdMob Test Mode)</span>
+                          <span>{isNativeApp ? '• إعلان مكافأة من Google AdMob' : '• محاكاة إعلان في معاينة الويب'}</span>
                           <span>• بدون أي خصم من رصيدك أو بياناتك</span>
                         </div>
                       </div>
@@ -4679,7 +4673,7 @@ export default function App() {
                         إعلان
                       </span>
                       <span className="text-[10px] text-[#8E757C] font-medium truncate max-w-[190px]">
-                        {IS_DEV ? 'AdMob Test • 320x50' : 'Google AdMob'}
+                        {IS_DEV ? 'Web Preview • 320x50' : 'Google AdMob'}
                       </span>
                     </div>
                     {IS_DEV && (
@@ -5378,6 +5372,43 @@ export default function App() {
               </button>
             </div>
 
+            {isNativeApp && adPrivacyOptionsRequired && (
+              <div className="space-y-2 rounded-2xl border border-[#F3DCE2] bg-[#FFF8FA] p-3">
+                <span className="text-xs font-extrabold text-[#4A353B] block">خصوصية الإعلانات:</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const consent = await showAdMobPrivacyOptions();
+                      setAdPrivacyOptionsRequired(consent.privacyOptionsRequired);
+                      if (!consent.canRequestAds) {
+                        setAdStatus('disabled');
+                        showToast('تم تحديث اختيارات الخصوصية، ولن تُطلب إعلانات حالياً.');
+                      } else {
+                        if (adStatus !== 'loaded') {
+                          setAdStatus('loading');
+                          await AdMob.showBanner({
+                            adId: ADMOB_CONFIG.bannerAdUnitId,
+                            adSize: BannerAdSize.ADAPTIVE_BANNER,
+                            position: BannerAdPosition.BOTTOM_CENTER,
+                            margin: 72,
+                            isTesting: false,
+                          });
+                        }
+                        showToast('تم تحديث اختيارات خصوصية الإعلانات.');
+                      }
+                    } catch (error) {
+                      console.warn('Unable to open AdMob privacy options:', error);
+                      showToast('تعذر فتح إعدادات خصوصية الإعلانات. حاول مرة أخرى.');
+                    }
+                  }}
+                  className="w-full rounded-xl border border-[#F3DCE2] bg-white px-3 py-2.5 text-right text-xs font-bold text-[#4A353B]"
+                >
+                  إدارة خيارات خصوصية الإعلانات
+                </button>
+              </div>
+            )}
+
             {/* Backups & Data Management */}
             <div className="space-y-2">
               <span className="text-xs font-bold text-[#4A353B] block">النسخ الاحتياطي والاستعادة:</span>
@@ -5700,7 +5731,7 @@ export default function App() {
             <div className="bg-[#4A353B] text-white px-4 py-2.5 flex items-center justify-between text-xs select-none">
               <div className="flex items-center gap-2">
                 <span className="bg-[#FADDE4] text-[#C96D84] font-extrabold px-1.5 py-0.2 rounded text-[10px]">
-                  AdMob Test
+                  Web Preview
                 </span>
                 <span className="text-[11px] text-[#FFF8FA]">Google Mobile Ads • Interstitial</span>
               </div>
@@ -5721,7 +5752,7 @@ export default function App() {
 
               <div>
                 <span className="text-[10px] font-bold text-[#8E757C] block mb-1">
-                  Unit: ca-app-pub-3940256099942544/1033173712
+                  وحدة إعلان بيني للمعاينة
                 </span>
                 <h3 className="text-lg font-black text-[#4A353B]">تدبيرة مصر – Tedbeera Egypt</h3>
                 <p className="text-xs text-[#8E757C] mt-1 max-w-[240px]">
@@ -5766,7 +5797,7 @@ export default function App() {
             <div className="bg-gradient-to-br from-[#E8A8B7] to-[#D47E93] text-white px-4 py-3 flex items-center justify-between select-none">
               <div className="flex items-center gap-2">
                 <span className="bg-white/25 text-white font-extrabold px-1.5 py-0.2 rounded text-[10px]">
-                  AdMob Test
+                  Web Preview
                 </span>
                 <span className="text-xs font-bold">Google Mobile Ads • Rewarded Ad</span>
               </div>
@@ -5799,8 +5830,8 @@ export default function App() {
                   <span>محاكاة تجريبية مخصصة للمعاينة:</span>
                 </div>
                 <div className="text-[10px] text-[#8E757C] space-y-0.5">
-                  <div>• <b>معرف الوحدة التجريبية:</b> {OFFICIAL_TEST_REWARDED_AD_UNIT}</div>
-                  <div>• هذه محاكاة واجهة تجريبية وليست إعلاناً حقيقياً من Google.</div>
+                  <div>• معاينة الويب لا تطلب إعلانات حقيقية.</div>
+                  <div>• هذه محاكاة واجهة تجريبية للويب وليست إعلاناً حقيقياً من Google.</div>
                   <div>• تمنح المكافأة فقط عند اكتمال المشاهدة بالكامل.</div>
                 </div>
               </div>

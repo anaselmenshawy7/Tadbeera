@@ -1,153 +1,121 @@
 /**
- * ========================================================
- * Tedbeera Egypt (تدبيرة مصر) — Phase 4D
- * Rewarded Ad Service Abstraction
- * ========================================================
- * Provides a modular, platform-agnostic rewarded video ad service.
- * Supports:
- * 1. Native Capacitor AdMob plugin (when running on Android device)
- * 2. Web Preview Simulator (for testing inside browser/sandbox)
- * 
- * OFFICIAL GOOGLE TEST REWARDED AD UNIT:
- * Unit ID: "ca-app-pub-3940256099942544/5224354917"
- * NOTE: For development and testing ONLY. Never use as production monetization.
+ * Tedbeera — Rewarded Ad Service
+ * Android requests the real AdMob rewarded unit only after UMP consent.
+ * Browser preview keeps a clearly labelled local simulation.
  */
+import { Capacitor } from '@capacitor/core';
+import { AdMob, RewardAdPluginEvents } from '@capacitor-community/admob';
+import { ADMOB_CONFIG } from '../config/admobConfig';
+import { initializeAdMobWithConsent } from './admobConsentService';
 
-export const OFFICIAL_TEST_REWARDED_AD_UNIT = 'ca-app-pub-3940256099942544/5224354917';
+export const REWARDED_AD_UNIT_ID = ADMOB_CONFIG.rewardedAdUnitId;
 
 export interface AdReward {
   type: string;
   amount: number;
 }
-
 export interface RewardedAdCallbacks {
-  /** Called when user finishes watching the ad and earns the reward */
   onUserEarnedReward: (reward: AdReward) => void;
-  /** Called when ad is dismissed or closed without completing */
   onDismissedWithoutReward: () => void;
-  /** Called when ad loading or presentation fails */
   onError: (error: string) => void;
-  /** Optional callback when ad opens */
   onAdOpened?: () => void;
 }
-
 export interface RewardedAdService {
-  /** Check if currently running in native Capacitor environment */
   isNative(): boolean;
-  /** Get configured test ad unit ID */
   getAdUnitId(): string;
-  /** Pre-loads or prepares a rewarded video ad */
   prepareAd(): Promise<boolean>;
-  /** Check if a rewarded video ad is ready for presentation */
   isReady(): boolean;
-  /** Shows the rewarded ad or triggers simulation */
   show(callbacks: RewardedAdCallbacks): Promise<void>;
-  /** Cleans up resources, listeners, and resets pending state */
   cleanup(): void;
 }
 
-// --------------------------------------------------------
-// NATIVE CAPACITOR ADAPTER
-// --------------------------------------------------------
 class CapacitorNativeRewardedAdAdapter implements RewardedAdService {
-  private adUnitId = OFFICIAL_TEST_REWARDED_AD_UNIT;
   private isAdLoaded = false;
-  private listeners: any[] = [];
+  private listeners: Array<{ remove: () => Promise<void> }> = [];
   private activeCallbacks: RewardedAdCallbacks | null = null;
 
-  isNative(): boolean {
-    return true;
-  }
-
-  getAdUnitId(): string {
-    return this.adUnitId;
-  }
+  isNative(): boolean { return true; }
+  getAdUnitId(): string { return REWARDED_AD_UNIT_ID; }
 
   async prepareAd(): Promise<boolean> {
     try {
-      const capacitor = (window as any).Capacitor;
-      const AdMob = capacitor?.Plugins?.AdMob;
-      if (!AdMob) {
+      const consent = await initializeAdMobWithConsent();
+      if (!consent.canRequestAds) {
         this.isAdLoaded = false;
         return false;
       }
-
-      await AdMob.prepareRewardVideoAd({
-        adId: this.adUnitId,
-        isTesting: true
-      });
+      await AdMob.prepareRewardVideoAd({ adId: REWARDED_AD_UNIT_ID, isTesting: false });
       this.isAdLoaded = true;
       return true;
-    } catch (err: any) {
+    } catch (error) {
       this.isAdLoaded = false;
+      console.warn('AdMob rewarded ad preparation failed:', error);
       return false;
     }
   }
 
-  isReady(): boolean {
-    return this.isAdLoaded;
-  }
+  isReady(): boolean { return this.isAdLoaded; }
 
   async show(callbacks: RewardedAdCallbacks): Promise<void> {
     this.activeCallbacks = callbacks;
+    let settled = false;
     try {
-      const capacitor = (window as any).Capacitor;
-      const AdMob = capacitor?.Plugins?.AdMob;
-      if (!AdMob) {
-        callbacks.onError('إضافة AdMob غير متوفرة في بيئة التشغيل الحالية.');
+      if (!this.isAdLoaded && !(await this.prepareAd())) {
+        callbacks.onError('إعلان المكافأة غير متاح حالياً. حاول مرة أخرى لاحقاً.');
+        this.activeCallbacks = null;
         return;
       }
-
-      // Cleanup prior listeners
       this.cleanupListeners();
-
-      let rewardEarned = false;
-
-      const rewardSub = await AdMob.addListener('rewardVideoAdRewardEarned', (info: any) => {
-        rewardEarned = true;
+      const rewardHandle = await AdMob.addListener(RewardAdPluginEvents.Rewarded, rewardItem => {
+        if (settled) return;
+        settled = true;
         this.activeCallbacks?.onUserEarnedReward({
-          type: info?.type || 'unlock_plan',
-          amount: info?.amount || 1
+          type: rewardItem?.type || 'weekly_plan_unlock',
+          amount: rewardItem?.amount || 1,
         });
       });
-      this.listeners.push(rewardSub);
-
-      const dismissSub = await AdMob.addListener('rewardVideoAdDismissed', () => {
-        if (!rewardEarned) {
-          this.activeCallbacks?.onDismissedWithoutReward();
-        }
-        this.isAdLoaded = false;
-        this.cleanupListeners();
+      this.listeners.push(rewardHandle);
+      const dismissedHandle = await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
+        if (settled) return;
+        settled = true;
+        this.activeCallbacks?.onDismissedWithoutReward();
       });
-      this.listeners.push(dismissSub);
-
-      const failSub = await AdMob.addListener('rewardVideoAdFailedToLoad', (err: any) => {
-        this.activeCallbacks?.onError(err?.message || 'فشل تحميل إعلان المكافأة.');
-        this.cleanupListeners();
+      this.listeners.push(dismissedHandle);
+      const failedHandle = await AdMob.addListener(RewardAdPluginEvents.FailedToShow, error => {
+        if (settled) return;
+        settled = true;
+        this.activeCallbacks?.onError(error?.message || 'تعذر عرض إعلان المكافأة.');
       });
-      this.listeners.push(failSub);
+      this.listeners.push(failedHandle);
 
       callbacks.onAdOpened?.();
-      await AdMob.showRewardVideoAd();
-    } catch (err: any) {
-      callbacks.onError(err?.message || 'حدث خطأ أثناء عرض إعلان المكافأة.');
+      const rewardItem = await AdMob.showRewardVideoAd();
+      if (!settled && rewardItem && rewardItem.amount > 0) {
+        settled = true;
+        callbacks.onUserEarnedReward({
+          type: rewardItem.type || 'weekly_plan_unlock',
+          amount: rewardItem.amount,
+        });
+      } else if (!settled) {
+        settled = true;
+        callbacks.onDismissedWithoutReward();
+      }
+    } catch (error) {
+      if (!settled) {
+        settled = true;
+        callbacks.onError(error instanceof Error ? error.message : 'حدث خطأ أثناء عرض إعلان المكافأة.');
+      }
+    } finally {
+      this.isAdLoaded = false;
       this.cleanupListeners();
+      this.activeCallbacks = null;
     }
   }
 
   private cleanupListeners(): void {
-    try {
-      this.listeners.forEach(sub => {
-        if (typeof sub?.remove === 'function') {
-          sub.remove();
-        }
-      });
-    } catch {
-      // safe fallback
-    }
+    this.listeners.forEach(handle => { void handle.remove().catch(() => undefined); });
     this.listeners = [];
   }
-
   cleanup(): void {
     this.cleanupListeners();
     this.isAdLoaded = false;
@@ -155,110 +123,56 @@ class CapacitorNativeRewardedAdAdapter implements RewardedAdService {
   }
 }
 
-// --------------------------------------------------------
-// WEB PREVIEW SIMULATION ADAPTER
-// --------------------------------------------------------
 class WebPreviewRewardedAdAdapter implements RewardedAdService {
-  private adUnitId = OFFICIAL_TEST_REWARDED_AD_UNIT;
-  private isPrepared = true;
   private activeCallbacks: RewardedAdCallbacks | null = null;
-
-  isNative(): boolean {
-    return false;
-  }
-
-  getAdUnitId(): string {
-    return this.adUnitId;
-  }
-
-  async prepareAd(): Promise<boolean> {
-    // In web preview, simulation is always prepared and responsive
-    this.isPrepared = true;
-    return true;
-  }
-
-  isReady(): boolean {
-    return this.isPrepared;
-  }
+  isNative(): boolean { return false; }
+  getAdUnitId(): string { return 'web-preview-simulation'; }
+  async prepareAd(): Promise<boolean> { return true; }
+  isReady(): boolean { return true; }
 
   async show(callbacks: RewardedAdCallbacks): Promise<void> {
     this.activeCallbacks = callbacks;
-    // Notify open
     callbacks.onAdOpened?.();
-    // Dispatch custom event to let App.tsx render the Arabic simulation modal
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(
-        new CustomEvent('tedbeera_open_reward_simulation', {
-          detail: {
-            testAdUnit: this.adUnitId,
-            featureName: 'خطة وجبات الأسبوع التوفيرية الكاملة مع جدول التسوق المجمع'
-          }
-        })
-      );
+      window.dispatchEvent(new CustomEvent('tedbeera_open_reward_simulation', {
+        detail: {
+          previewMode: true,
+          featureName: 'جدول وجبات الأسبوع التوفيري الكامل مع جدول التسوق المجمع',
+        },
+      }));
     }
   }
-
-  /**
-   * Called by the Web Simulation Dialog when user explicitly completes watching.
-   */
   completeSimulation(): void {
-    if (this.activeCallbacks) {
-      this.activeCallbacks.onUserEarnedReward({
-        type: 'weekly_plan_unlock',
-        amount: 1
-      });
-      this.activeCallbacks = null;
-    }
-  }
-
-  /**
-   * Called by the Web Simulation Dialog when user cancels or dismisses early.
-   */
-  cancelSimulation(): void {
-    if (this.activeCallbacks) {
-      this.activeCallbacks.onDismissedWithoutReward();
-      this.activeCallbacks = null;
-    }
-  }
-
-  cleanup(): void {
+    if (!this.activeCallbacks) return;
+    this.activeCallbacks.onUserEarnedReward({ type: 'weekly_plan_unlock', amount: 1 });
     this.activeCallbacks = null;
-    this.isPrepared = true;
   }
+  cancelSimulation(): void {
+    if (!this.activeCallbacks) return;
+    this.activeCallbacks.onDismissedWithoutReward();
+    this.activeCallbacks = null;
+  }
+  cleanup(): void { this.activeCallbacks = null; }
 }
 
-// --------------------------------------------------------
-// SINGLETON INSTANTIATION & FACTORY
-// --------------------------------------------------------
 let cachedService: RewardedAdService | null = null;
 let webSimulationAdapterInstance: WebPreviewRewardedAdAdapter | null = null;
 
 export function getRewardedAdService(): RewardedAdService {
   if (cachedService) return cachedService;
-
-  const isCapacitorAvailable =
-    typeof window !== 'undefined' &&
-    Boolean((window as any).Capacitor?.isPluginAvailable?.('AdMob'));
-
-  if (isCapacitorAvailable) {
+  if (Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('AdMob')) {
     cachedService = new CapacitorNativeRewardedAdAdapter();
   } else {
     webSimulationAdapterInstance = new WebPreviewRewardedAdAdapter();
     cachedService = webSimulationAdapterInstance;
   }
-
   return cachedService;
 }
 
-/**
- * Accessor for the web simulation adapter so the simulation dialog can notify completion/dismissal
- */
 export function getWebSimulationAdapter(): WebPreviewRewardedAdAdapter | null {
   if (!webSimulationAdapterInstance) {
     const service = getRewardedAdService();
-    if (!service.isNative()) {
-      webSimulationAdapterInstance = service as WebPreviewRewardedAdAdapter;
-    }
+    if (!service.isNative()) webSimulationAdapterInstance = service as WebPreviewRewardedAdAdapter;
   }
   return webSimulationAdapterInstance;
 }

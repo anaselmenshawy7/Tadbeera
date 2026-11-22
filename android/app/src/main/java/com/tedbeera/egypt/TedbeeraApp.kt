@@ -17,11 +17,5 @@ class TedbeeraApp : Application() {
         database = AppDatabase.getDatabase(this)
         repository = TedbeeraRepository(database)
 
-        // AdMob Phase 2: Safe initialization on background thread
-        try {
-            com.google.android.gms.ads.MobileAds.initialize(this) {}
-        } catch (_: Exception) {
-            // Keep completely resilient if offline or play services missing
-        }
     }
 }

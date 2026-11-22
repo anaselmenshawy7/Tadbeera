@@ -103,8 +103,6 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
-    // AdMob Google Mobile Ads (Phase 2 - Test Mode)
-    implementation("com.google.android.gms:play-services-ads:23.0.0")
 
     // Testing
     testImplementation(libs.junit)
