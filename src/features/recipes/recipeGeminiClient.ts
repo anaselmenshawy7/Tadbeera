@@ -144,9 +144,9 @@ export interface GeminiSdkDeps {
   lookupVerifiedPhoto?: (englishQuery: string) => Promise<{ imageUrl: string; imageCredit: string } | null>;
 }
 
-/** Never include the private Gemini server key in browser or mobile bundles. */
+/** The original direct Gemini integration reads the build-time client key. */
 export function getBundledClientGeminiApiKey(): string {
-  return '';
+  return (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
 }
 
 export function getGeminiErrorDetails(err: unknown): {
