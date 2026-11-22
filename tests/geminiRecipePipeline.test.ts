@@ -29,6 +29,7 @@ import {
   GEMINI_MODEL,
   searchOfflineLocalRecipes,
 } from '../src/features/recipes/recipeGeminiClient.ts';
+import { GEMINI_MAX_OUTPUT_TOKENS as CONTRACT_GEMINI_MAX_OUTPUT_TOKENS } from '../src/features/recipes/recipeContract.ts';
 import { buildEgyptianRecipeSpeechSegments } from '../src/features/recipes/recipeSpeech.ts';
 
 function startTestServer(deps: RecipeGeneratorDeps): Promise<{ baseUrl: string; close: () => Promise<void> }> {
@@ -484,7 +485,8 @@ test('TTS speech segments and offline saved recipes (new AI & legacy format) wor
 
 test('3-Tier Local-First + Cache-First (100-item LRU) + Gemini Flash pipeline minimizes API quota and preserves accuracy', async () => {
   assert.equal(GEMINI_MODEL, 'gemini-3.5-flash-lite');
-  assert.equal(GEMINI_MAX_OUTPUT_TOKENS, 1200);
+  assert.equal(GEMINI_MAX_OUTPUT_TOKENS, CONTRACT_GEMINI_MAX_OUTPUT_TOKENS);
+  assert.equal(GEMINI_MAX_OUTPUT_TOKENS, 2048);
   assert.equal(GENERATED_CACHE_MAX_ITEMS, 100);
 
   const memoryMap = new Map<string, string>();
