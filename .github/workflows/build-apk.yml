@@ -63,8 +63,13 @@ jobs:
 
       - name: Build Web Assets
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: npm run build
+          VITE_GEMINI_API_BASE_URL: ${{ secrets.VITE_GEMINI_API_BASE_URL }}
+        run: |
+          if [ -z "$VITE_GEMINI_API_BASE_URL" ]; then
+            echo "::error::Set the VITE_GEMINI_API_BASE_URL GitHub Actions secret to the deployed Gemini API base URL before building the Android app."
+            exit 1
+          fi
+          npm run build
 
       - name: Verify corrected recipe photos are bundled
         run: |

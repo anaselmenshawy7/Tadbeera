@@ -42,7 +42,6 @@ import {
 import {
   GeminiRecipeSdkError,
   generateRecipeWithGeminiSdk,
-  getBundledClientGeminiApiKey,
   searchOfflineLocalRecipes,
   type GeminiSdkDeps,
 } from './recipeGeminiClient';
@@ -628,7 +627,7 @@ export function getRecipeOriginBadge(recipe: OnlineRecipe): { label: string; cla
 }
 
 export function getApiBaseUrl(): string {
-  return '';
+  return (import.meta.env.VITE_GEMINI_API_BASE_URL || '').trim();
 }
 
 export async function generateRecipeViaApi(
@@ -830,13 +829,13 @@ export async function resolveOnlineOrOfflineRecipe(
     );
   }
 
-  const runDirectClientGemini = async (): Promise<OnlineRecipe> => {
+  // Tests may inject an SDK adapter explicitly. Production always routes
+  // Gemini requests through the server-side API; no client key is bundled.
+  if (options.clientSdkDeps) {
+    let recipe: OnlineRecipe;
     try {
-      const aiRecipe = await generateRecipeWithGeminiSdk(query, {
-        sendUserAgent: false,
-        ...options.clientSdkDeps,
-      });
-      return aiRecipeToOnlineRecipe(aiRecipe);
+      const aiRecipe = await generateRecipeWithGeminiSdk(query, options.clientSdkDeps);
+      recipe = aiRecipeToOnlineRecipe(aiRecipe);
     } catch (err) {
       if (err instanceof GeminiRecipeSdkError) {
         throw new RecipeApiError(err.message, {
@@ -851,40 +850,17 @@ export async function resolveOnlineOrOfflineRecipe(
         status: 502,
       });
     }
-  };
-
-  const isNative = options.isNative ?? Capacitor.isNativePlatform();
-  if (isNative) {
-    const recipe = await runDirectClientGemini();
     saveGeneratedRecipeToLruCache(query, recipe, storage);
     return { recipes: [recipe], mode: 'ai' };
   }
 
-  try {
-    const recipe = await generateRecipeViaApi(query, {
-      fetchFn: options.fetchFn,
-      apiBaseUrl: options.apiBaseUrl,
-      timeoutMs: options.timeoutMs,
-    });
-    saveGeneratedRecipeToLruCache(query, recipe, storage);
-    return { recipes: [recipe], mode: 'ai' };
-  } catch (err) {
-    const apiErr = err instanceof RecipeApiError ? err : null;
-    const hasClientKey = Boolean((options.clientSdkDeps?.apiKey ?? getBundledClientGeminiApiKey()).trim());
-    const backendMissing =
-      apiErr &&
-      (apiErr.status === 404 ||
-        apiErr.status === 405 ||
-        ((apiErr.code === 'MISSING_API_KEY' || apiErr.code === 'NETWORK_ERROR') && hasClientKey));
-
-    if (backendMissing) {
-      const recipe = await runDirectClientGemini();
-      saveGeneratedRecipeToLruCache(query, recipe, storage);
-      return { recipes: [recipe], mode: 'ai' };
-    }
-
-    throw err;
-  }
+  const recipe = await generateRecipeViaApi(query, {
+    fetchFn: options.fetchFn,
+    apiBaseUrl: options.apiBaseUrl,
+    timeoutMs: options.timeoutMs,
+  });
+  saveGeneratedRecipeToLruCache(query, recipe, storage);
+  return { recipes: [recipe], mode: 'ai' };
 }
 
 function ServingsStepperControl({

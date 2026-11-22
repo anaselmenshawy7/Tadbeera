@@ -1,7 +1,6 @@
 import {
   AdMob,
   AdmobConsentStatus,
-  PrivacyOptionsRequirementStatus,
 } from '@capacitor-community/admob';
 
 export interface AdMobConsentState {
@@ -27,7 +26,7 @@ async function collectConsentAndInitialize(): Promise<AdMobConsentState> {
   return {
     canRequestAds: consentInfo.canRequestAds,
     privacyOptionsRequired:
-      consentInfo.privacyOptionsRequirementStatus === PrivacyOptionsRequirementStatus.REQUIRED,
+      String(consentInfo.privacyOptionsRequirementStatus) === 'REQUIRED',
   };
 }
 
@@ -56,7 +55,7 @@ export async function showAdMobPrivacyOptions(): Promise<AdMobConsentState> {
   const state: AdMobConsentState = {
     canRequestAds: consentInfo.canRequestAds,
     privacyOptionsRequired:
-      consentInfo.privacyOptionsRequirementStatus === PrivacyOptionsRequirementStatus.REQUIRED,
+      String(consentInfo.privacyOptionsRequirementStatus) === 'REQUIRED',
   };
   consentFlow = Promise.resolve(state);
   return state;

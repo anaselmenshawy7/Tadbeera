@@ -16,7 +16,30 @@ export interface RecipeGeneratorDeps {
 
 export function createRecipeApiApp(deps: RecipeGeneratorDeps = {}) {
   const app = express();
+  app.set('trust proxy', 1);
   app.use(express.json({ limit: '64kb' }));
+
+  const requestWindows = new Map<string, { startedAt: number; count: number }>();
+  app.use('/api/recipes/generate', (req, res, next) => {
+    const now = Date.now();
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const current = requestWindows.get(ip);
+    if (!current || now - current.startedAt >= 60_000) {
+      requestWindows.set(ip, { startedAt: now, count: 1 });
+      next();
+      return;
+    }
+    if (current.count >= 20) {
+      res.status(429).json({
+        error: 'تم تجاوز عدد طلبات الوصفات المسموح مؤقتاً. حاول بعد دقيقة.',
+        code: 'RATE_LIMITED',
+        retryable: true,
+      });
+      return;
+    }
+    current.count += 1;
+    next();
+  });
 
   app.use('/api', (req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
