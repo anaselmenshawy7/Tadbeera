@@ -5725,7 +5725,7 @@ export default function App() {
               <div className="bg-[#FFF8FA] p-2.5 rounded-xl border border-[#F3DCE2] text-[11px] text-[#8E757C] space-y-1">
                 <div>• <b>معطلة افتراضياً:</b> لا تظهر إلا بتفعيل يدوي صريح.</div>
                 <div>• <b>تحديد التكرار:</b> حد أقصى مرتان في الجلسة ({sessionInterstitialCount}/2).</div>
-                <div>• <b>فترة راحة (Cooldown):</b> 120 ثانية بين كل إعلان والآخر.</div>
+                <div>• <b>فترة راحة (Cooldown):</b> 15 دقيقة على الأقل بين كل إعلان والآخر.</div>
                 <div>• <b>حماية المهام:</b> محظورة أثناء حساب الميزانية أو إدخال الأسعار.</div>
               </div>
 
