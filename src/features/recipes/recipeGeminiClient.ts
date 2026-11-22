@@ -146,8 +146,7 @@ export interface GeminiSdkDeps {
 
 /** The original direct Gemini integration reads the build-time client key. */
 export function getBundledClientGeminiApiKey(): string {
-  const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-  return (viteEnv?.VITE_GEMINI_API_KEY || '').trim();
+  return (process.env.GEMINI_API_KEY || '').trim();
 }
 
 export function getGeminiErrorDetails(err: unknown): {
