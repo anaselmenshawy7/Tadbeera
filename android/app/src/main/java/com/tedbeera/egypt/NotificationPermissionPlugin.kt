@@ -11,6 +11,8 @@ import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.PermissionState
 import com.getcapacitor.Plugin
@@ -134,6 +136,47 @@ class NotificationPermissionPlugin : Plugin() {
             }
         }
         call.resolve(JSObject().put("created", true).put("channelId", "tedbeera_alarm"))
+    }
+
+    @PluginMethod
+    fun sendTestNotification(call: PluginCall) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            getPermissionState("notifications") != PermissionState.GRANTED
+        ) {
+            call.resolve(JSObject().put("success", false).put("reason", "permission_denied"))
+            return
+        }
+        try {
+            val channelId = "tedbeera_meal_reminders"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val manager = context.getSystemService(NotificationManager::class.java)
+                if (manager.getNotificationChannel(channelId) == null) {
+                    manager.createNotificationChannel(
+                        NotificationChannel(
+                            channelId,
+                            "تذكيرات وجبات تدبيرة",
+                            NotificationManager.IMPORTANCE_HIGH
+                        ).apply {
+                            description = "تذكيرات الفطار والغداء والعشاء"
+                        }
+                    )
+                }
+            }
+            val notification = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("تدبيرة جاهزة! 🔔")
+                .setContentText("اختبار الإشعارات ناجح. هنفكّرك بمواعيد وجبات البيت.")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .build()
+            NotificationManagerCompat.from(context).notify(104, notification)
+            call.resolve(JSObject().put("success", true))
+        } catch (error: SecurityException) {
+            call.resolve(JSObject().put("success", false).put("reason", "permission_denied"))
+        } catch (error: Exception) {
+            call.reject("تعذر إرسال إشعار الاختبار", error)
+        }
     }
 
     @PluginMethod
