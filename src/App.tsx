@@ -281,7 +281,7 @@ export default function App() {
   // Keep the recipe API awake while Tadbeera is open and visible.
   // This lightweight health check contains no API key or user recipe data.
   useEffect(() => {
-    const apiBaseUrl = (import.meta.env.VITE_GEMINI_API_BASE_URL || '').trim().replace(/\\/$/, '');
+    const apiBaseUrl = (import.meta.env.VITE_GEMINI_API_BASE_URL || '').trim().replace(/\/$/, '');
     if (!apiBaseUrl) return;
 
     let disposed = false;
