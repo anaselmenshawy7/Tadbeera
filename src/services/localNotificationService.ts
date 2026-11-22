@@ -20,6 +20,7 @@ interface NotificationPermissionPlugin {
   checkExactAlarmPermission(): Promise<{ granted: boolean }>;
   openExactAlarmSettings(): Promise<{ granted: boolean }>;
   ensureAlarmChannel(): Promise<{ created: boolean; channelId: string }>;
+  sendTestNotification(): Promise<{ success: boolean; reason?: string }>;
 }
 
 const NotificationPermission = registerPlugin<NotificationPermissionPlugin>('NotificationPermission');
@@ -351,49 +352,32 @@ class CapacitorLocalNotificationServiceImpl implements LocalNotificationService 
   }
 
   async sendTestNotification(): Promise<{ success: boolean; message: string }> {
-    if (!this.isPluginAvailable()) {
-      return { success: false, message: 'الإشعارات غير متاحة: افتح نسخة Android المحدّثة من تدبيرة.' };
-    }
-    if (!this.isLocalNotificationsAvailable()) {
-      return { success: false, message: 'اختبار الإشعار غير متاح في هذه النسخة، لكن تذكيرات الوجبات اليومية تعمل من خلال خدمة أندرويد.' };
+    if (!this.isPluginAvailable() || !this.isPermissionPluginAvailable()) {
+      return { success: false, message: 'تعذر الاتصال بخدمة إشعارات أندرويد. حدّث التطبيق إلى أحدث نسخة ثم حاول مرة أخرى.' };
     }
     try {
       const permission = await this.checkPermission();
       if (permission !== 'granted' && !(await this.requestPermission())) {
         return { success: false, message: 'لم تسمح بإشعارات تدبيرة. فعّل إذن الإشعارات من إعدادات الهاتف ثم أعد الاختبار.' };
       }
-      const notificationsEnabled = await LocalNotifications.areEnabled();
-      if (!notificationsEnabled.value) {
-        return { success: false, message: 'إشعارات تدبيرة مقفولة من إعدادات الهاتف. فعّلها ثم أعد الاختبار.' };
+
+      // Use the same native Android notification path as meal reminders.
+      // The optional Capacitor LocalNotifications plugin is not a prerequisite
+      // for a valid notification test in the signed Release build.
+      const result = await NotificationPermission.sendTestNotification();
+      if (!result.success) {
+        if (result.reason === 'permission_denied') {
+          return { success: false, message: 'إذن الإشعارات غير مفعّل. اسمح لتدبيرة بإرسال الإشعارات من إعدادات الهاتف.' };
+        }
+        if (result.reason === 'notifications_disabled') {
+          return { success: false, message: 'إشعارات تدبيرة مقفولة من إعدادات الهاتف. فعّلها ثم أعد الاختبار.' };
+        }
+        if (result.reason === 'channel_disabled') {
+          return { success: false, message: 'قناة تذكيرات تدبيرة مكتومة من إعدادات الهاتف. اسمح بإشعارات تذكيرات الوجبات ثم أعد الاختبار.' };
+        }
+        return { success: false, message: 'تعذر إرسال إشعار الاختبار من أندرويد. راجع إعدادات إشعارات تدبيرة ثم حاول مرة أخرى.' };
       }
-      await LocalNotifications.createChannel({
-        id: DAILY_REMINDER_CHANNEL_ID,
-        name: 'تذكيرات وجبات تدبيرة',
-        description: 'تذكيرات الفطار والغداء والعشاء',
-        importance: 4,
-        visibility: 1,
-      });
-      const channelState = await LocalNotifications.listChannels();
-      const mealChannel = (channelState.channels || []).find(channel => channel.id === DAILY_REMINDER_CHANNEL_ID);
-      if (!mealChannel || mealChannel.importance === 0) {
-        return { success: false, message: 'قناة إشعارات تدبيرة غير متاحة أو مكتومة من إعدادات الهاتف. اسمح بإشعارات قناة تذكيرات الوجبات ثم أعد الاختبار.' };
-      }
-      await LocalNotifications.cancel({ notifications: [{ id: 104 }] });
-      await LocalNotifications.schedule({
-        notifications: [{
-          id: 104,
-          title: 'تدبيرة جاهزة! 🔔',
-          body: 'اختبار الإشعارات ناجح. هنفكّرك بمواعيد وجبات البيت.',
-          schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
-          channelId: DAILY_REMINDER_CHANNEL_ID,
-          extra: { source: 'tadbeera_notification_test' },
-        }],
-      });
-      const pending = await LocalNotifications.getPending();
-      if (!(pending.notifications || []).some(item => item.id === 104)) {
-        return { success: false, message: 'لم يتم تأكيد تسجيل إشعار الاختبار على الجهاز.' };
-      }
-      return { success: true, message: 'تم تسجيل إشعار الاختبار على الجهاز. انتظر 5 ثوانٍ وتأكد من ظهوره أعلى الجهاز.' };
+      return { success: true, message: 'تم إرسال إشعار الاختبار بنجاح. تأكد من ظهوره أعلى الجهاز.' };
     } catch (error) {
       return {
         success: false,
