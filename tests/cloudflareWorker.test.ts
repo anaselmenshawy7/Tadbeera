@@ -90,8 +90,8 @@ function makeGeminiSuccessResponse(payload: unknown): Response {
   );
 }
 
-test('Worker contract preserves gemini-2.5-flash model and matches SDK schema identically', () => {
-  assert.equal(GEMINI_MODEL, 'gemini-2.5-flash');
+test('Worker contract preserves gemini-3.5-flash-lite model and matches SDK schema identically', () => {
+  assert.equal(GEMINI_MODEL, 'gemini-3.5-flash-lite');
   assert.deepEqual(RECIPE_JSON_SCHEMA, RECIPE_RESPONSE_SCHEMA);
 });
 
@@ -755,10 +755,10 @@ test('Worker coalesces concurrent identical Gemini requests, disables thinking t
   const parsedCapturedBody = capturedBody as Record<string, unknown> | null;
   const genConfig = (parsedCapturedBody?.generationConfig || {}) as {
     maxOutputTokens?: number;
-    thinkingConfig?: { thinkingBudget?: number };
+    thinkingConfig?: { thinkingLevel?: string; thinkingBudget?: number };
   };
   assert.equal(genConfig.maxOutputTokens, 1200);
-  assert.deepEqual(genConfig.thinkingConfig, { thinkingBudget: 0 });
+  assert.deepEqual(genConfig.thinkingConfig, { thinkingLevel: 'minimal' });
 
   // 2. Safety-blocked and 404 responses do NOT retry wastefully
   let safetyCalls = 0;

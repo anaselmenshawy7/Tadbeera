@@ -483,7 +483,7 @@ test('TTS speech segments and offline saved recipes (new AI & legacy format) wor
 });
 
 test('3-Tier Local-First + Cache-First (100-item LRU) + Gemini Flash pipeline minimizes API quota and preserves accuracy', async () => {
-  assert.equal(GEMINI_MODEL, 'gemini-2.5-flash');
+  assert.equal(GEMINI_MODEL, 'gemini-3.5-flash-lite');
   assert.equal(GEMINI_MAX_OUTPUT_TOKENS, 1200);
   assert.equal(GENERATED_CACHE_MAX_ITEMS, 100);
 

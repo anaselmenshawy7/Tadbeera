@@ -58,7 +58,7 @@ const STATIC_GENERATION_CONFIG_JSON = JSON.stringify({
   responseMimeType: 'application/json',
   responseSchema: RECIPE_JSON_SCHEMA,
   maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
-  thinkingConfig: { thinkingBudget: 0 },
+  thinkingConfig: { thinkingLevel: 'minimal' },
 });
 
 function buildGeminiRequestBody(query: string): string {
