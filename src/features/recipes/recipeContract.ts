@@ -1,5 +1,5 @@
 export const GEMINI_MODEL = 'gemini-3.5-flash-lite';
-export const GEMINI_MAX_OUTPUT_TOKENS = 1200;
+export const GEMINI_MAX_OUTPUT_TOKENS = 2048;
 export const GEMINI_TIMEOUT_MS = 22_000;
 export const PHOTO_LOOKUP_TIMEOUT_MS = 2_200;
 
