@@ -772,7 +772,7 @@ export default function App() {
   const [adStatus, setAdStatus] = useState<AdStatus>('disabled');
   const [adPrivacyOptionsRequired, setAdPrivacyOptionsRequired] = useState(false);
   const [nativeBannerHeight, setNativeBannerHeight] = useState<number>(60);
-  const [isInterstitialEnabled, setIsInterstitialEnabled] = useState<boolean>(false); // Strictly disabled by default
+  const [isInterstitialEnabled, setIsInterstitialEnabled] = useState<boolean>(true); // Enabled by default with policy safeguards
   const [sessionInterstitialCount, setSessionInterstitialCount] = useState<number>(0);
   const [lastInterstitialTime, setLastInterstitialTime] = useState<number>(0);
   const [isInterstitialLoading, setIsInterstitialLoading] = useState<boolean>(false);
@@ -958,7 +958,7 @@ export default function App() {
           adSize: BannerAdSize.ADAPTIVE_BANNER,
           position: BannerAdPosition.BOTTOM_CENTER,
           margin: 72,
-          isTesting: false,
+          isTesting: ADMOB_CONFIG.testing,
         });
       } catch (err) {
         console.warn('AdMob consent/banner initialization error:', err);
@@ -1058,6 +1058,28 @@ export default function App() {
     setPlaybackCountdown(5);
   };
 
+  const getBannerDiagnosis = (): string => {
+    if (!isNativeApp) {
+      return 'معاينة ويب: إعلان البانر غير متاح في المتصفح (يعمل محلياً)';
+    }
+    if (!Capacitor.isPluginAvailable('AdMob')) {
+      return 'مشكلة: إضافة AdMob غير متوفرة في بيئة التطبيق (Plugin Missing)';
+    }
+    if (adStatus === 'disabled') {
+      return 'مشكلة: موافقة الخصوصية (UMP) غير ممنوحة أو مطلوب اتخاذ قرار للموافقة';
+    }
+    if (adStatus === 'loading') {
+      return 'الحالة: جارٍ طلب وتحميل إعلان البانر من AdMob...';
+    }
+    if (adStatus === 'failed') {
+      return 'مشكلة: فشل تحميل إعلان البانر (Ad Load Failed / تحقق من الاتصال أو معرّف الوحدة)';
+    }
+    if (adStatus === 'loaded') {
+      return 'الحالة: إعلان البانر يعمل بنجاح ومحجوز بالمساحة الصحيحة ✓';
+    }
+    return 'الحالة: في انتظار التهيئة';
+  };
+
   // Phase 4D: Add Consolidated Meal Plan Ingredients to Shopping List
   const handleAddConsolidatedPlanToShopping = () => {
     const consolidated = consolidateWeeklyPlanIngredients(familySize);
@@ -1092,6 +1114,8 @@ export default function App() {
 
     setIsConsolidatedShoppingModalOpen(false);
     showToast(`تمت إضافة ${newItems.length} صنف من خطة الأسبوع إلى قائمة المشتريات بنجاح 🛒`);
+    // Trigger interstitial ad on natural in-app milestone (respecting cooldown & session limits)
+    void triggerTestInterstitial();
   };
 
   // Show a real AdMob interstitial on Android; retain simulation only for web preview.
@@ -1155,7 +1179,7 @@ export default function App() {
       failedHandle = await AdMob.addListener(InterstitialAdPluginEvents.FailedToShow, () => finish(false));
       await AdMob.prepareInterstitial({
         adId: ADMOB_CONFIG.interstitialAdUnitId,
-        isTesting: false,
+        isTesting: ADMOB_CONFIG.testing,
       });
       await AdMob.showInterstitial();
     } catch (error) {
@@ -5683,6 +5707,14 @@ export default function App() {
               <p className="text-[11px] text-[#8E757C] leading-relaxed">
                 يتم حجز مساحة ثابتة (50px) للبانر فوق شريط التنقل السفلي مباشرة لمنع اهتزاز الشاشة (CLS). في حال انقطاع الشبكة أو فشل التحميل، تنهار الحاوية تلقائياً لاسترجاع المساحة دون ترك فراغ ميت.
               </p>
+              <div className="bg-[#FFF8FA] p-2.5 rounded-xl border border-[#F3DCE2] text-[11px] text-[#4A353B] space-y-1">
+                <div className="font-bold flex items-center gap-1 text-[#C96D84]">
+                  <span>🔍 فحص تشخيص البانر (Banner Diagnostics):</span>
+                </div>
+                <div className="text-[10px] text-[#8E757C] leading-relaxed">
+                  {getBannerDiagnosis()}
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
                   onClick={() => { setAdStatus('loaded'); showToast('تم تفعيل البانر (Loaded) ✓'); }}

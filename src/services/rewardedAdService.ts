@@ -42,9 +42,10 @@ class CapacitorNativeRewardedAdAdapter implements RewardedAdService {
       const consent = await initializeAdMobWithConsent();
       if (!consent.canRequestAds) {
         this.isAdLoaded = false;
+        console.warn('AdMob rewarded ad blocked: UMP consent not granted.');
         return false;
       }
-      await AdMob.prepareRewardVideoAd({ adId: REWARDED_AD_UNIT_ID, isTesting: false });
+      await AdMob.prepareRewardVideoAd({ adId: REWARDED_AD_UNIT_ID, isTesting: ADMOB_CONFIG.testing });
       this.isAdLoaded = true;
       return true;
     } catch (error) {
@@ -160,9 +161,15 @@ let webSimulationAdapterInstance: WebPreviewRewardedAdAdapter | null = null;
 
 export function getRewardedAdService(): RewardedAdService {
   if (cachedService) return cachedService;
-  if (Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('AdMob')) {
+  const isNative = Capacitor.isNativePlatform() || Capacitor.getPlatform() === 'android';
+  const hasAdMobPlugin = Capacitor.isPluginAvailable('AdMob');
+  if (isNative && hasAdMobPlugin) {
+    console.info('AdMob Rewarded: Using native Android AdMob adapter.');
     cachedService = new CapacitorNativeRewardedAdAdapter();
   } else {
+    if (isNative && !hasAdMobPlugin) {
+      console.warn('AdMob Rewarded Diagnostics: Running on native Android but AdMob plugin is not available. Falling back to web simulation or check capacitor plugin registration.');
+    }
     webSimulationAdapterInstance = new WebPreviewRewardedAdAdapter();
     cachedService = webSimulationAdapterInstance;
   }
