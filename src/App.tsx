@@ -278,34 +278,6 @@ const POWDER_PINK_DONUT_PALETTE = [
 export default function App() {
   const isNativeApp = Capacitor.isNativePlatform();
 
-  // Keep the recipe API awake while Tadbeera is open and visible.
-  // This lightweight health check contains no API key or user recipe data.
-  useEffect(() => {
-    const apiBaseUrl = (import.meta.env.VITE_GEMINI_API_BASE_URL || '').trim().replace(/\/$/, '');
-    if (!apiBaseUrl) return;
-
-    let disposed = false;
-    const warmRecipeApi = () => {
-      if (disposed || document.visibilityState === 'hidden') return;
-      void fetch(`${apiBaseUrl}/api/health`, {
-        method: 'GET',
-        cache: 'no-store',
-      }).catch(() => {
-        // Warm-up failures must not affect normal app usage.
-      });
-    };
-
-    warmRecipeApi();
-    const intervalId = window.setInterval(warmRecipeApi, 10 * 60 * 1000);
-    document.addEventListener('visibilitychange', warmRecipeApi);
-
-    return () => {
-      disposed = true;
-      window.clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', warmRecipeApi);
-    };
-  }, []);
-
   // Acknowledge the current bundle promptly so Capgo can safely roll back a broken OTA release.
   useEffect(() => {
     if (!isNativeApp) return;
