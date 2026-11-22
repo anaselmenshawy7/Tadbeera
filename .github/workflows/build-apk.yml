@@ -63,9 +63,9 @@ jobs:
 
       - name: Build Web Assets
         env:
-          VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          if [ -z "$VITE_GEMINI_API_KEY" ]; then
+          if [ -z "$GEMINI_API_KEY" ]; then
             echo "::error::The GEMINI_API_KEY GitHub Actions secret is required for direct Gemini recipe generation."
             exit 1
           fi
