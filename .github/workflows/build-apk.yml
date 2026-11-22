@@ -63,10 +63,10 @@ jobs:
 
       - name: Build Web Assets
         env:
-          VITE_GEMINI_API_BASE_URL: ${{ secrets.VITE_GEMINI_API_BASE_URL }}
+          VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          if [ -z "$VITE_GEMINI_API_BASE_URL" ]; then
-            echo "::error::Set the VITE_GEMINI_API_BASE_URL GitHub Actions secret to the deployed Gemini API base URL before building the Android app."
+          if [ -z "$VITE_GEMINI_API_KEY" ]; then
+            echo "::error::The GEMINI_API_KEY GitHub Actions secret is required for direct Gemini recipe generation."
             exit 1
           fi
           npm run build
