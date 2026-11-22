@@ -162,6 +162,17 @@ class NotificationPermissionPlugin : Plugin() {
                     )
                 }
             }
+            if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+                call.resolve(JSObject().put("success", false).put("reason", "notifications_disabled"))
+                return
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                context.getSystemService(NotificationManager::class.java)
+                    .getNotificationChannel(channelId)?.importance == NotificationManager.IMPORTANCE_NONE
+            ) {
+                call.resolve(JSObject().put("success", false).put("reason", "channel_disabled"))
+                return
+            }
             val notification = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("تدبيرة جاهزة! 🔔")
