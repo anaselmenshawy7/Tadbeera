@@ -985,7 +985,7 @@ export function OnlineRecipeSearch({
   // Keep the free Render instance warm while the online recipe screen is in use.
   // The health check never sends the Gemini key or recipe data.
   useEffect(() => {
-    const baseUrl = getApiBaseUrl().replace(/\\/$/, '');
+    const baseUrl = getApiBaseUrl().replace(/\/$/, '');
     if (!baseUrl) return;
 
     let disposed = false;
