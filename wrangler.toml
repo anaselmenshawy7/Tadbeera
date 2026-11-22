@@ -1,0 +1,14 @@
+name = "tadbeera-recipes-api"
+main = "worker/index.ts"
+compatibility_date = "2025-05-01"
+workers_dev = true
+
+# Free-tier only configuration:
+# - No paid bindings (no R2, no Durable Objects, no billing required).
+# - GEMINI_API_KEY MUST NEVER be placed here; set it only as an encrypted Secret
+#   in Cloudflare Dashboard or via: npx wrangler secret put GEMINI_API_KEY
+
+[vars]
+ALLOWED_ORIGINS = "https://localhost,capacitor://localhost,http://localhost:3000,http://127.0.0.1:3000"
+RATE_LIMIT_MAX_PER_MIN = "15"
+RECIPE_CACHE_TTL_SECONDS = "43200"

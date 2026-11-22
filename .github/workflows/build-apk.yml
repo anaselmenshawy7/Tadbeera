@@ -63,10 +63,12 @@ jobs:
 
       - name: Build Web Assets
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VITE_GEMINI_API_BASE_URL: ${{ secrets.VITE_GEMINI_API_BASE_URL }}
         run: |
-          if [ -z "$GEMINI_API_KEY" ]; then
-            echo "::error::The GEMINI_API_KEY GitHub Actions secret is required for direct Gemini recipe generation."
+          if [ -z "$VITE_GEMINI_API_BASE_URL" ]; then
+            echo "::warning::VITE_GEMINI_API_BASE_URL is not set yet. Offline recipes and cache will work, while live AI recipe generation requires the deployed Cloudflare Worker URL."
+          elif ! printf '%s' "$VITE_GEMINI_API_BASE_URL" | grep -Eq '^https://[^/]+$'; then
+            echo "::error::VITE_GEMINI_API_BASE_URL must be an https:// origin without /api or trailing slash."
             exit 1
           fi
           npm run build

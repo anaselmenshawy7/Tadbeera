@@ -1,26 +1,25 @@
-# حماية مفتاح Gemini لتطبيق تدبيرة
+# حماية مفتاح Gemini وتشغيل الخادم عبر Cloudflare Workers (مجاناً بدون بطاقة بنكية)
 
 ## ما الذي تغيّر في الكود؟
 
-- مفتاح `GEMINI_API_KEY` لم يعد يُحقن في ملفات JavaScript أو APK/AAB.
-- تطبيق Android والويب يرسلان طلب توليد الوصفة إلى `/api/recipes/generate` على خادم Node.
-- الخادم يقرأ المفتاح من متغير البيئة `GEMINI_API_KEY` فقط.
-- تمت إضافة حد أولي قدره 20 طلب وصفة لكل عنوان IP خلال الدقيقة.
+- مفتاح `GEMINI_API_KEY` لا يُحقن أبداً في ملفات JavaScript أو APK/AAB أو تحديثات OTA.
+- `server.ts` يظل كما هو للتطوير المحلي ومعاينة Google AI Studio.
+- تم تجهيز خادم Cloudflare Worker في `worker/index.ts` وإعداده في `wrangler.toml` للعمل على خطة **Workers Free** (100,000 طلب/يوم مجاناً بدون بطاقة بنكية أو تفعيل فوترة).
+- الـ Worker يستقبل `/api/health` و`/api/recipes/generate`، ويقرأ `GEMINI_API_KEY` كـ Encrypted Secret فقط، ويرسله عبر الترويسة الآمنة `x-goog-api-key` إلى نموذج `gemini-2.5-flash`.
+- يطبق الـ Worker طبقات حماية ضد إساءة الاستخدام:
+  - التحقق من `Origin` المسموح بها (`ALLOWED_ORIGINS`) لتطبيق Android (`https://localhost`) والويب.
+  - فحص نوع المحتوى (`application/json`) وحد أقصى لحجم الطلب (`64KB`).
+  - منع الروابط والتعليمات المشبوهة (Prompt Injection) في حقل البحث.
+  - تحديد معدل الطلبات لكل IP (`RATE_LIMIT_MAX_PER_MIN`، افتراضياً 15 طلباً/دقيقة).
+  - كاش حافة مجاني عبر `caches.default` لتقليل استهلاك حصة Gemini للأكلات المتكررة.
+- مسارات `.github/workflows/` تمرر الآن `VITE_GEMINI_API_BASE_URL` فقط أثناء بناء التطبيق.
 
-## نشر الخادم
+## خطوات النشر (المرحلة الثانية — تُنفذ فقط عند قرارك)
 
-1. افتح Render واربط مستودع GitHub `anaselmenshawy7/Tadbeera`.
-2. اختر **New > Blueprint** ليقرأ إعداد `render.yaml` وينشئ خدمة `tadbeera-gemini-api`.
-3. في إعدادات الخدمة، أضف قيمة `GEMINI_API_KEY` الحالية نفسها كمتغير Secret. لا تضعها في ملفات المشروع.
-4. انتظر اكتمال النشر، ثم افتح `https://YOUR-SERVICE.onrender.com/api/health` وتأكد من ظهور `{"ok":true}`.
-5. انسخ عنوان الخدمة الأساسي فقط، من دون `/api` ومن دون شرطة مائلة أخيرة.
-6. في GitHub > Settings > Secrets and variables > Actions، أضف Secret باسم `VITE_GEMINI_API_BASE_URL` واجعل قيمته عنوان الخدمة.
-7. بعد ذلك أعد تشغيل بناء Android ورفع OTA. سيتوقف البناء برسالة واضحة إذا لم يُضف عنوان الخدمة.
-
-## الحفاظ على المفتاح
-
-لا تحذف قيمة `GEMINI_API_KEY` القديمة من GitHub Secrets قبل التأكد من أن الخدمة المنشورة تستخدم المفتاح نفسه وتنجح في توليد وصفة. بعد التحقق، يمكن إبقاء نسخة GitHub كنسخة احتياطية أو حذفها لاحقاً وفق اختيارك؛ الكود لم يعد يمررها إلى Vite.
-
-## ملاحظة تشغيلية
-
-خطة Render المجانية قد تدخل في وضع السكون بعد فترة من عدم الاستخدام، وقد يتأخر أول طلب حتى يستيقظ الخادم. يمكن اختيار خطة مدفوعة إذا كان مطلوباً استجابة فورية مستمرة.
+1. أنشئ حساباً مجانياً على Cloudflare (بدون إدخال بطاقة بنكية، والتزم بخطة Workers Free فقط).
+2. اربط مستودع GitHub أو انشر الـ Worker من الجذر باستخدام `wrangler.toml`:
+   - لا تفعّل R2 أو Workers Paid أو Durable Objects.
+3. أضف `GEMINI_API_KEY` كـ **Secret** في إعدادات الـ Worker (من لوحة Cloudflare أو عبر `npx wrangler secret put GEMINI_API_KEY`).
+4. تأكد من عمل الرابط عبر فتح `https://YOUR-WORKER.workers.dev/api/health` وظهور `{"ok":true}`.
+5. في GitHub > Settings > Secrets and variables > Actions، أضف Secret باسم `VITE_GEMINI_API_BASE_URL` بقيمة الرابط الأساسي فقط (بدون `/api` وبدون شرطة مائلة أخيرة).
+6. أضف أي نطاق ويب مستقبلي إلى `ALLOWED_ORIGINS` في `wrangler.toml` أو إعدادات الـ Worker.

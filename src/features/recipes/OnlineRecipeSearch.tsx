@@ -657,6 +657,16 @@ export async function generateRecipeViaApi(
 
   const fetchImpl = options.fetchFn || fetch;
   const baseUrl = (options.apiBaseUrl ?? getApiBaseUrl()).replace(/\/$/, '');
+  if (!baseUrl && !options.fetchFn && Capacitor.isNativePlatform()) {
+    throw new RecipeApiError(
+      'خدمة الوصفات الذكية عبر الإنترنت غير مربوطة بعد في هذا الإصدار. يمكن استخدام الوصفات المحفوظة والمكتبة الأوفلاين.',
+      {
+        code: 'API_BASE_URL_MISSING',
+        retryable: false,
+        status: 503,
+      }
+    );
+  }
   const endpoint = `${baseUrl}/api/recipes/generate`;
   const timeoutMs = options.timeoutMs ?? API_REQUEST_TIMEOUT_MS;
 
@@ -829,11 +839,11 @@ export async function resolveOnlineOrOfflineRecipe(
     );
   }
 
-  // Generate directly with the Gemini SDK, as in the original app.
-  {
+  // Use server-side /api/recipes/generate proxy in app runtime; allow explicit clientSdkDeps injection in unit tests.
+  if (options.clientSdkDeps) {
     let recipe: OnlineRecipe;
     try {
-      const aiRecipe = await generateRecipeWithGeminiSdk(query, options.clientSdkDeps || {});
+      const aiRecipe = await generateRecipeWithGeminiSdk(query, options.clientSdkDeps);
       recipe = aiRecipeToOnlineRecipe(aiRecipe);
     } catch (err) {
       if (err instanceof GeminiRecipeSdkError) {
@@ -853,7 +863,13 @@ export async function resolveOnlineOrOfflineRecipe(
     return { recipes: [recipe], mode: 'ai' };
   }
 
-
+  const recipe = await generateRecipeViaApi(query, {
+    fetchFn: options.fetchFn,
+    apiBaseUrl: options.apiBaseUrl,
+    timeoutMs: options.timeoutMs,
+  });
+  saveGeneratedRecipeToLruCache(query, recipe, storage);
+  return { recipes: [recipe], mode: 'ai' };
 }
 
 function ServingsStepperControl({
