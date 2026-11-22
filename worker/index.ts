@@ -684,6 +684,11 @@ async function callGeminiOnce(
     try {
       return JSON.parse(rawText);
     } catch {
+      console.warn('Gemini JSON parse failed', {
+        finishReason,
+        rawTextLength: rawText?.length ?? 0,
+        hasContent: Boolean(rawText && rawText.length > 0),
+      });
       throw Object.assign(
         new Error('استجابة خدمة الوصفات لم تكتمل بشكل صالح. حاول مرة أخرى.'),
         {
