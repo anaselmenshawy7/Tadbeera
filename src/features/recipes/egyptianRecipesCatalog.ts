@@ -1,5 +1,5 @@
 import type { CuisineTier } from './OnlineRecipeSearch';
-import { scoreRecipeDishRelevance } from './arabicSearch';
+import { scoreRecipeDishRelevance } from './arabicSearch.ts';
 
 export type RecipeCategoryTag =
   | 'معجنات'
