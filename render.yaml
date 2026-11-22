@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm install --legacy-peer-deps && npm run build
-    startCommand: npm start
+    startCommand: node --experimental-strip-types server.ts
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
